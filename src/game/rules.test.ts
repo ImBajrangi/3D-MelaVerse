@@ -394,10 +394,15 @@ test('recordKarmaAction and stepKarmaState track positive deeds and award Divine
   );
 });
 
-test('computeRideCabinCameraPose computes distinct 1st-person cabin positions for Giant Wheel, Carousel, and Columbus Boat', () => {
-  const wheel0 = computeRideCabinCameraPose('giant_wheel', 0);
-  const wheel5 = computeRideCabinCameraPose('giant_wheel', 5);
+test('computeRideCabinCameraPose computes distinct 1st-person cabin positions in Carnival Ride Grounds (x: 38, z: -25) with 360 look offsets', () => {
+  const wheel0 = computeRideCabinCameraPose('giant_wheel', 0, 0, 0);
+  const wheel5 = computeRideCabinCameraPose('giant_wheel', 5, 0, 0);
   assert.notEqual(wheel0.camY, wheel5.camY, 'Giant wheel cabin altitude changes over time');
+  assert.ok(wheel0.camX > 30, 'Giant wheel is zoned in East Carnival Ride Grounds (x: 38)');
+
+  const wheelLookRight = computeRideCabinCameraPose('giant_wheel', 0, Math.PI / 2, 0.25);
+  assert.notEqual(wheel0.lookX, wheelLookRight.lookX, '360 yaw offset rotates gondola look target');
+  assert.notEqual(wheel0.lookY, wheelLookRight.lookY, 'Pitch offset tilts gondola look target');
 
   const carouselPose = computeRideCabinCameraPose('carousel', 2.5);
   assert.ok(carouselPose.camY > 1.5 && carouselPose.camY < 5.0);

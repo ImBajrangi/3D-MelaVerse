@@ -16,19 +16,29 @@ interface BalloonTarget {
 }
 
 const INITIAL_BALLOONS: BalloonTarget[] = [
-  { id: 1, xPct: 18, yPct: 28, speedX: 14, bobOffset: 0.0, colorHex: '#F43F5E', label: 'Ruby Balloon', points: 20, popped: false },
-  { id: 2, xPct: 36, yPct: 28, speedX: 14, bobOffset: 1.1, colorHex: '#FBBF24', label: 'Gold Balloon', points: 30, popped: false },
-  { id: 3, xPct: 54, yPct: 28, speedX: 14, bobOffset: 2.2, colorHex: '#38BDF8', label: 'Neel Balloon', points: 20, popped: false },
-  { id: 4, xPct: 72, yPct: 28, speedX: 14, bobOffset: 3.3, colorHex: '#A855F7', label: 'Royal Balloon', points: 25, popped: false },
-  { id: 5, xPct: 24, yPct: 52, speedX: -18, bobOffset: 0.7, colorHex: '#10B981', label: 'Panna Balloon', points: 25, popped: false },
-  { id: 6, xPct: 45, yPct: 52, speedX: -18, bobOffset: 1.9, colorHex: '#F43F5E', label: 'Gulabi Balloon', points: 20, popped: false },
-  { id: 7, xPct: 66, yPct: 52, speedX: -18, bobOffset: 2.8, colorHex: '#FBBF24', label: 'Surya Balloon', points: 30, popped: false },
-  { id: 8, xPct: 84, yPct: 52, speedX: -18, bobOffset: 4.1, colorHex: '#38BDF8', label: 'Indigo Balloon', points: 25, popped: false },
-  { id: 9, xPct: 30, yPct: 75, speedX: 22, bobOffset: 1.4, colorHex: '#FBBF24', label: 'Jackpot Gold Balloon', points: 40, popped: false },
-  { id: 10, xPct: 55, yPct: 75, speedX: 22, bobOffset: 2.6, colorHex: '#F43F5E', label: 'Crimson Balloon', points: 30, popped: false },
-  { id: 11, xPct: 78, yPct: 75, speedX: 22, bobOffset: 3.9, colorHex: '#A855F7', label: 'Violet Balloon', points: 35, popped: false },
-  { id: 12, xPct: 15, yPct: 75, speedX: 22, bobOffset: 4.8, colorHex: '#10B981', label: 'Emerald Balloon', points: 30, popped: false },
+  { id: 1, xPct: 15, yPct: 26, speedX: 14, bobOffset: 0.0, colorHex: '#F43F5E', label: 'Ruby Balloon', points: 20, popped: false },
+  { id: 2, xPct: 32, yPct: 26, speedX: 14, bobOffset: 1.1, colorHex: '#FBBF24', label: 'Gold Balloon', points: 30, popped: false },
+  { id: 3, xPct: 49, yPct: 26, speedX: 14, bobOffset: 2.2, colorHex: '#38BDF8', label: 'Neel Balloon', points: 20, popped: false },
+  { id: 4, xPct: 66, yPct: 26, speedX: 14, bobOffset: 3.3, colorHex: '#A855F7', label: 'Royal Balloon', points: 25, popped: false },
+  { id: 5, xPct: 83, yPct: 26, speedX: 14, bobOffset: 4.4, colorHex: '#10B981', label: 'Panna Balloon', points: 25, popped: false },
+  { id: 6, xPct: 18, yPct: 52, speedX: -18, bobOffset: 0.7, colorHex: '#10B981', label: 'Emerald Balloon', points: 25, popped: false },
+  { id: 7, xPct: 35, yPct: 52, speedX: -18, bobOffset: 1.9, colorHex: '#F43F5E', label: 'Gulabi Balloon', points: 20, popped: false },
+  { id: 8, xPct: 52, yPct: 52, speedX: -18, bobOffset: 2.8, colorHex: '#FBBF24', label: 'Surya Balloon', points: 30, popped: false },
+  { id: 9, xPct: 69, yPct: 52, speedX: -18, bobOffset: 4.1, colorHex: '#38BDF8', label: 'Indigo Balloon', points: 25, popped: false },
+  { id: 10, xPct: 85, yPct: 52, speedX: -18, bobOffset: 5.2, colorHex: '#A855F7', label: 'Amethyst Balloon', points: 30, popped: false },
+  { id: 11, xPct: 16, yPct: 76, speedX: 22, bobOffset: 1.4, colorHex: '#FBBF24', label: 'Jackpot Gold Balloon', points: 40, popped: false },
+  { id: 12, xPct: 34, yPct: 76, speedX: 22, bobOffset: 2.6, colorHex: '#F43F5E', label: 'Crimson Balloon', points: 30, popped: false },
+  { id: 13, xPct: 52, yPct: 76, speedX: 22, bobOffset: 3.9, colorHex: '#A855F7', label: 'Violet Balloon', points: 35, popped: false },
+  { id: 14, xPct: 70, yPct: 76, speedX: 22, bobOffset: 4.8, colorHex: '#10B981', label: 'Jade Balloon', points: 30, popped: false },
+  { id: 15, xPct: 86, yPct: 76, speedX: 22, bobOffset: 5.7, colorHex: '#38BDF8', label: 'Sapphire Balloon', points: 35, popped: false },
 ];
+
+interface PopBurstEffect {
+  id: number;
+  xPct: number;
+  yPct: number;
+  colorHex: string;
+}
 
 interface BalloonShootModalProps {
   isOpen: boolean;
@@ -43,12 +53,13 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
 }) => {
   const { dialogRef, handleKeyDown } = useDialogFocus(isOpen, onClose);
   const [balloons, setBalloons] = useState<BalloonTarget[]>(INITIAL_BALLOONS);
-  const [ammoLeft, setAmmoLeft] = useState<number>(15);
+  const [ammoLeft, setAmmoLeft] = useState<number>(10);
   const [shotsFired, setShotsFired] = useState<number>(0);
   const [balloonsPopped, setBalloonsPopped] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [bestStreak, setBestStreak] = useState<number>(0);
-  const [timeLeftSec, setTimeLeftSec] = useState<number>(30);
+  const [timeLeftSec, setTimeLeftSec] = useState<number>(25);
+  const [popBursts, setPopBursts] = useState<PopBurstEffect[]>([]);
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number }>({
     x: 50,
     y: 50,
@@ -58,12 +69,13 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
 
   const resetBooth = useCallback(() => {
     setBalloons(INITIAL_BALLOONS.map((b) => ({ ...b, popped: false })));
-    setAmmoLeft(15);
+    setAmmoLeft(10);
     setShotsFired(0);
     setBalloonsPopped(0);
     setCurrentStreak(0);
     setBestStreak(0);
-    setTimeLeftSec(30);
+    setTimeLeftSec(25);
+    setPopBursts([]);
     setRoundFinished(false);
     setTicketsClaimed(false);
   }, []);
@@ -110,6 +122,23 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
     if (roundFinished || ammoLeft <= 0) return;
 
     melaverseAudio.playBalloonGunshotPop(true);
+    const hitTarget = balloons.find((b) => b.id === balloonId);
+    if (hitTarget) {
+      const burstId = Date.now() + balloonId;
+      setPopBursts((prev) => [
+        ...prev,
+        {
+          id: burstId,
+          xPct: hitTarget.xPct,
+          yPct: hitTarget.yPct,
+          colorHex: hitTarget.colorHex,
+        },
+      ]);
+      window.setTimeout(() => {
+        setPopBursts((prev) => prev.filter((p) => p.id !== burstId));
+      }, 450);
+    }
+
     const nextAmmo = ammoLeft - 1;
     const nextShots = shotsFired + 1;
     const nextPopped = balloonsPopped + 1;
@@ -188,7 +217,7 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
               GUBBARA NISHANA — BALLOON SHOOTING STALL
             </h2>
             <p className="text-xs text-[#FFF8F0]/80">
-              Aim with the booth crosshair and click moving balloons before ammo or time runs out!
+              Aim with the booth crosshair and click 15 oscillating balloons with 10 darts before the 25s timer runs out!
             </p>
           </div>
           <button
@@ -203,12 +232,12 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
         {/* Live Telemetry Strip: Ammo, Timer, Popped, Accuracy, Tickets */}
         <div className="grid grid-cols-4 gap-2.5 mb-4 text-center font-mono">
           <div className="p-2 rounded-lg bg-[#28120D] border border-[#F59E0B]/30">
-            <div className="text-[10px] text-[#FDE68A]">RIFLE AMMO</div>
+            <div className="text-[10px] text-[#FDE68A]">DARTS / AMMO</div>
             <div
               className="text-lg font-bold tabular-nums text-white"
               data-testid="balloon-ammo-left"
             >
-              {ammoLeft}/15
+              {ammoLeft}/10
             </div>
           </div>
           <div className="p-2 rounded-lg bg-[#28120D] border border-[#F59E0B]/30">
@@ -223,7 +252,7 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
               className="text-lg font-bold tabular-nums text-[#FDA4AF]"
               data-testid="balloons-popped-count"
             >
-              {balloonsPopped}/12 · ×{bestStreak}
+              {balloonsPopped}/15 · ×{bestStreak}
             </div>
           </div>
           <div className="p-2 rounded-lg bg-[#28120D] border border-[#FBBF24]/50">
@@ -253,7 +282,7 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
           }}
         >
           {/* Rack Lines */}
-          {[28, 52, 75].map((rowY) => (
+          {[26, 52, 76].map((rowY) => (
             <div
               key={rowY}
               className="absolute left-4 right-4 h-0.5 bg-[#F59E0B]/30"
@@ -287,6 +316,32 @@ export const BalloonShootModal: React.FC<BalloonShootModalProps> = ({
               </button>
             );
           })}
+
+          {/* Particle Bursts on Balloon Pop */}
+          {popBursts.map((burst) => (
+            <div
+              key={burst.id}
+              data-testid="balloon-pop-burst"
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-ping"
+              style={{ left: `${burst.xPct}%`, top: `${burst.yPct}%` }}
+            >
+              <svg viewBox="0 0 60 60" className="w-14 h-14">
+                <circle
+                  cx="30"
+                  cy="30"
+                  r="18"
+                  fill="none"
+                  stroke={burst.colorHex}
+                  strokeWidth="3"
+                  strokeDasharray="5 5"
+                />
+                <circle cx="30" cy="10" r="3.5" fill="#FDE68A" />
+                <circle cx="50" cy="30" r="3.5" fill={burst.colorHex} />
+                <circle cx="30" cy="50" r="3.5" fill="#FFFBEB" />
+                <circle cx="10" cy="30" r="3.5" fill={burst.colorHex} />
+              </svg>
+            </div>
+          ))}
 
           {/* Custom Booth Crosshair Reticle */}
           <div

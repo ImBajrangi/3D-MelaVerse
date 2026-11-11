@@ -1411,26 +1411,26 @@ export const MELA_RIDES: MelaRidePlacement[] = [
     id: 'giant_wheel',
     name: 'Aakash Jhula (Giant Wheel)',
     hindiSubtitle: 'आकाश झूला · Sky Ferris Wheel',
-    x: 0,
-    z: -32,
+    x: 38,
+    z: -25,
     ticketCostCoins: 10,
-    interactionRadius: 9.5,
+    interactionRadius: 10.5,
   },
   {
     id: 'carousel',
     name: 'Rajwada Carousel (Merry-Go-Round)',
     hindiSubtitle: 'राजवाड़ा चकरी · Royal Carousel',
-    x: -29,
-    z: -16,
+    x: 24,
+    z: -34,
     ticketCostCoins: 10,
-    interactionRadius: 7.5,
+    interactionRadius: 8.0,
   },
   {
     id: 'columbus_boat',
     name: 'Samudra Nauka (Columbus Swinging Boat)',
     hindiSubtitle: 'समुद्र नौका · Swinging Pirate Ship',
-    x: 29,
-    z: -16,
+    x: 42,
+    z: -6,
     ticketCostCoins: 10,
     interactionRadius: 8.5,
   },
@@ -1450,31 +1450,33 @@ export const MELA_STALLS: MelaStallPlacement[] = [
     id: 'balloon_shoot',
     name: 'Gubbara Nishana (Balloon Shooting Stall)',
     promptLabel: 'Press E to Play Balloon Shoot (Earn Tickets)',
-    x: -28,
-    z: 14,
-    interactionRadius: 6.5,
+    x: -35,
+    z: -20,
+    interactionRadius: 6.8,
   },
   {
     id: 'ring_toss',
     name: 'Challa Pheko (Ring Toss Stall)',
     promptLabel: 'Press E to Play Ring Toss (Earn Tickets)',
-    x: 28,
-    z: 14,
-    interactionRadius: 6.5,
+    x: -35,
+    z: -10,
+    interactionRadius: 6.8,
   },
   {
     id: 'prize_shop',
     name: 'Shahi Inam Ghar (Mela Prize & Chaat Shop)',
     promptLabel: 'Press E to Redeem Tickets at Prize Shop',
-    x: 0,
-    z: 29,
-    interactionRadius: 6.5,
+    x: -32,
+    z: 1,
+    interactionRadius: 6.8,
   },
 ];
 
 export function computeRideCabinCameraPose(
   rideId: 'giant_wheel' | 'carousel' | 'columbus_boat',
-  elapsedSec: number
+  elapsedSec: number,
+  lookYawOffsetRad = 0,
+  lookPitchOffsetRad = 0
 ): {
   camX: number;
   camY: number;
@@ -1485,23 +1487,27 @@ export function computeRideCabinCameraPose(
   wheelAngleRad: number;
   swingAngleRad: number;
 } {
+  const clampedPitch = Math.max(-0.85, Math.min(0.85, lookPitchOffsetRad));
+
   if (rideId === 'giant_wheel') {
-    // Giant Wheel hub at (0, 12.5, -32), radius 9.2m, rotating in XY plane
+    // Giant Wheel hub at (38, 12.5, -25) in Carnival Ride Grounds, radius 9.2m
     const angularSpeed = 0.48;
     const angle = elapsedSec * angularSpeed;
     const radius = 9.2;
-    const hubX = 0;
+    const hubX = 38;
     const hubY = 12.5;
-    const hubZ = -32;
+    const hubZ = -25;
 
     const cabinX = hubX + Math.cos(angle) * radius;
     const cabinY = hubY + Math.sin(angle) * radius;
     const cabinZ = hubZ + 1.1;
 
-    // Look out across the illuminated Mela grounds from the ascending/descending gondola
-    const lookX = cabinX * 0.35 + Math.sin(elapsedSec * 0.25) * 8;
-    const lookY = Math.max(2.2, cabinY * 0.55);
-    const lookZ = 0;
+    // Look out across the Central Sanctum Plaza & Meena Bazaar, with full 360° look-around
+    const baseYaw = -0.72 + Math.sin(elapsedSec * 0.25) * 0.22 + lookYawOffsetRad;
+    const lookDist = 28;
+    const lookX = cabinX + Math.sin(baseYaw) * lookDist;
+    const lookY = Math.max(2.2, cabinY * 0.55 + Math.sin(clampedPitch) * 14);
+    const lookZ = cabinZ + Math.cos(baseYaw) * lookDist;
 
     return {
       camX: cabinX,
@@ -1516,42 +1522,41 @@ export function computeRideCabinCameraPose(
   }
 
   if (rideId === 'carousel') {
-    // Carousel center at (-29, 0, -16), radius 4.2m, bobbing horses
+    // Carousel center at (24, 0, -34), radius 4.1m, bobbing horses
     const angularSpeed = 0.95;
     const angle = elapsedSec * angularSpeed;
     const radius = 4.1;
-    const centerX = -29;
-    const centerZ = -16;
+    const centerX = 24;
+    const centerZ = -34;
 
     const seatX = centerX + Math.cos(angle) * radius;
     const seatZ = centerZ + Math.sin(angle) * radius;
     const bobY = 2.4 + Math.sin(elapsedSec * 3.2) * 0.38;
 
-    // Look tangent forward along carousel rotation and toward the courtyard
-    const tangentX = -Math.sin(angle);
-    const tangentZ = Math.cos(angle);
+    const tangentAngle = angle + lookYawOffsetRad;
+    const tangentX = -Math.sin(tangentAngle);
+    const tangentZ = Math.cos(tangentAngle);
 
     return {
       camX: seatX,
       camY: bobY,
       camZ: seatZ,
-      lookX: seatX + tangentX * 10 + 4,
-      lookY: bobY - 0.15,
+      lookX: seatX + tangentX * 10 - 3,
+      lookY: bobY - 0.15 + Math.sin(clampedPitch) * 6,
       lookZ: seatZ + tangentZ * 10 + 3,
       wheelAngleRad: angle,
       swingAngleRad: 0,
     };
   }
 
-  // Columbus Swinging Boat at (29, 0, -16), pivot at Y = 11.5m, arm length 7.8m
-  const pivotX = 29;
+  // Columbus Swinging Boat at (42, 0, -6), pivot at Y = 11.5m, arm length 7.6m
+  const pivotX = 42;
   const pivotY = 11.5;
-  const pivotZ = -16;
+  const pivotZ = -6;
   const armLength = 7.6;
-  const maxSwingRad = 0.78; // ~45 degrees pendulum arc
+  const maxSwingRad = 0.78;
   const swingAngle = Math.sin(elapsedSec * 1.65) * maxSwingRad;
 
-  // Pendulum swings along Z axis
   const deckX = pivotX;
   const deckY = pivotY - Math.cos(swingAngle) * armLength + 1.25;
   const deckZ = pivotZ + Math.sin(swingAngle) * armLength;
@@ -1560,9 +1565,9 @@ export function computeRideCabinCameraPose(
     camX: deckX - 0.6,
     camY: deckY,
     camZ: deckZ,
-    lookX: 0,
-    lookY: Math.max(2.5, deckY * 0.7),
-    lookZ: deckZ + Math.cos(swingAngle) * 6,
+    lookX: Math.sin(lookYawOffsetRad) * 16,
+    lookY: Math.max(2.5, deckY * 0.7 + Math.sin(clampedPitch) * 8),
+    lookZ: deckZ + Math.cos(swingAngle) * 6 + Math.cos(lookYawOffsetRad) * 6,
     wheelAngleRad: 0,
     swingAngleRad: swingAngle,
   };
@@ -1691,7 +1696,7 @@ export function stepCrowdVisitorAI(
   if (distToTarget < 1.8) {
     const currentAngle = Math.atan2(visitor.z, visitor.x);
     const nextAngle = currentAngle + 0.55 + (visitor.id % 3) * 0.18;
-    const promenadeRadius = 14 + (visitor.id % 5) * 2.8;
+    const promenadeRadius = 14 + (visitor.id % 6) * 4.2;
     nextTargetX = Math.cos(nextAngle) * promenadeRadius;
     nextTargetZ = Math.sin(nextAngle) * promenadeRadius;
     dx = nextTargetX - visitor.x;
@@ -1724,11 +1729,11 @@ export function stepCrowdVisitorAI(
   let nextX = visitor.x + nextVx * safeDt;
   let nextZ = visitor.z + nextVz * safeDt;
 
-  // Keep inside Mela perimeter (radius 36m)
+  // Keep inside expanded Mela perimeter (radius 54m)
   const radialDist = Math.hypot(nextX, nextZ);
-  if (radialDist > 36) {
-    nextX = (nextX / radialDist) * 36;
-    nextZ = (nextZ / radialDist) * 36;
+  if (radialDist > 54) {
+    nextX = (nextX / radialDist) * 54;
+    nextZ = (nextZ / radialDist) * 54;
   }
 
   return {

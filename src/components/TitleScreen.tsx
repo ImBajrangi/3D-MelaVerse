@@ -225,11 +225,17 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* Bottom Safe Margin: Single Inline Control Hint Line */}
-      <div className="pt-4">
-        <p className="text-xs md:text-sm font-mono text-[#FDE68A]/95 tracking-wide drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
-          WASD Move · Space/LMB Fire Gulal · Q/RMB Lotus Shield · Shift Dash · R Rhythm &amp; Diyas · F Fireworks · G Rangoli · B Blueprint
-        </p>
+      {/* Bottom Safe Margin: Sleek Compact Badge in Orbital Preview Mode */}
+      <div className="pt-2 flex items-center">
+        <div
+          data-testid="orbital-controls-badge"
+          className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/65 border border-white/15 text-[11px] font-mono text-[#FDE68A]/90 shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
+        >
+          <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+          <span>
+            Ready: WASD Move · Space Fire · Q Shield · E Board Ride / Play Stall · G Rangoli
+          </span>
+        </div>
       </div>
     </div>
   );

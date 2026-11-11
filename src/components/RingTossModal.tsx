@@ -38,6 +38,7 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
     message: string;
     isHit: boolean;
   } | null>(null);
+  const [isCharging, setIsCharging] = useState<boolean>(false);
   const [claimed, setClaimed] = useState<boolean>(false);
 
   useEffect(() => {
@@ -48,9 +49,30 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
       setTicketsEarned(0);
       setCapturedPegIds([]);
       setLastTossResult(null);
+      setIsCharging(false);
       setClaimed(false);
     }
   }, [isOpen]);
+
+  // Oscillate powerPct while holding Space or LMB charge
+  useEffect(() => {
+    if (!isOpen || !isCharging) return;
+    let dir = 1;
+    const timer = window.setInterval(() => {
+      setPowerPct((prev) => {
+        let next = prev + dir * 4;
+        if (next >= 100) {
+          next = 100;
+          dir = -1;
+        } else if (next <= 12) {
+          next = 12;
+          dir = 1;
+        }
+        return next;
+      });
+    }, 45);
+    return () => window.clearInterval(timer);
+  }, [isOpen, isCharging]);
 
   const handleAimAtPeg = (peg: RingTossPeg) => {
     // Compute exact angle and power to land on the chosen peg so clicking a peg or tuning sliders both work smoothly
@@ -64,6 +86,7 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
 
   const handleTossRing = () => {
     if (ringsLeft <= 0) return;
+    setIsCharging(false);
 
     const result = simulateRingTossTrajectory(
       angleDeg,
@@ -179,7 +202,7 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
 
         {/* Visual Peg Board (Click any peg to auto-calibrate angle & power, or use sliders below) */}
         <div
-          className="relative w-full h-56 rounded-xl border border-[#38BDF8]/40 p-4 mb-4 flex flex-col justify-between overflow-hidden"
+          className="relative w-full h-64 rounded-xl border border-[#38BDF8]/40 p-4 mb-4 flex flex-col justify-between overflow-hidden"
           style={{
             background:
               'radial-gradient(circle at 50% 85%, #2A1410 0%, #140806 85%)',
@@ -189,11 +212,12 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
             CLICK ANY PRIZE PEG TO AIM, THEN PRESS &ldquo;TOSS RING&rdquo;
           </div>
 
-          <div className="relative flex-1 w-full">
+          <div className="relative flex-1 w-full my-1">
             {MELA_RING_PEGS.map((peg) => {
               const isCaptured = capturedPegIds.includes(peg.id);
-              const leftPct = 50 + (peg.x / 2.0) * 38;
-              const topPct = 90 - ((peg.z - 1.8) / 3.4) * 72;
+              const leftPct = 50 + (peg.x / 1.85) * 36;
+              const topPct =
+                peg.z > 4.2 ? 16 : peg.z > 3.0 ? 48 : 80;
 
               return (
                 <button
@@ -201,7 +225,7 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
                   type="button"
                   data-testid={`ring-peg-${peg.id}`}
                   onClick={() => handleAimAtPeg(peg)}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
                     isCaptured
                       ? 'bg-[#065F46] border-[#34D399] text-white scale-105'
                       : 'bg-[#1F0F0B]/95 border-[#F59E0B]/50 text-[#FFFBEB] hover:scale-105 hover:border-white'
@@ -261,6 +285,12 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
               <span>THROW POWER BAR</span>
               <span className="font-bold text-[#FBBF24]">{powerPct}%</span>
             </label>
+            <div className="w-full h-2 rounded-full bg-black/60 overflow-hidden mb-1.5 border border-[#F59E0B]/40">
+              <div
+                className="h-full bg-gradient-to-r from-[#38BDF8] via-[#FBBF24] to-[#E11D48] transition-all duration-75"
+                style={{ width: `${powerPct}%` }}
+              />
+            </div>
             <input
               id="ring-power-slider"
               type="range"
@@ -274,22 +304,40 @@ export const RingTossModal: React.FC<RingTossModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            disabled={ringsLeft <= 0}
-            data-testid="toss-ring-btn"
-            onClick={handleTossRing}
-            className={`px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
-              ringsLeft > 0
-                ? 'bg-[#0284C7] hover:bg-[#0369A1] text-white shadow-[0_4px_16px_rgba(2,132,199,0.5)]'
-                : 'bg-[#2A1410] text-[#FFF8F0]/40 cursor-not-allowed'
-            }`}
-          >
-            {ringsLeft > 0
-              ? `Toss Bamboo Ring (${ringsLeft} Left)`
-              : 'All Rings Tossed!'}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={ringsLeft <= 0}
+              data-testid="toss-ring-btn"
+              onClick={handleTossRing}
+              className={`px-5 py-2.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
+                ringsLeft > 0
+                  ? 'bg-[#0284C7] hover:bg-[#0369A1] text-white shadow-[0_4px_16px_rgba(2,132,199,0.5)]'
+                  : 'bg-[#2A1410] text-[#FFF8F0]/40 cursor-not-allowed'
+              }`}
+            >
+              {ringsLeft > 0
+                ? `Toss Bamboo Ring (${ringsLeft} Left)`
+                : 'All Rings Tossed!'}
+            </button>
+
+            <button
+              type="button"
+              disabled={ringsLeft <= 0}
+              data-testid="charge-ring-btn"
+              onMouseDown={() => ringsLeft > 0 && setIsCharging(true)}
+              onMouseUp={() => isCharging && handleTossRing()}
+              onMouseLeave={() => setIsCharging(false)}
+              className={`px-3.5 py-2.5 rounded-xl font-mono text-xs font-bold border transition-all cursor-pointer ${
+                isCharging
+                  ? 'bg-[#F59E0B] border-white text-[#180B08]'
+                  : 'bg-[#24110D] hover:bg-[#3A1B15] border-[#F59E0B]/45 text-[#FDE68A]'
+              }`}
+            >
+              {isCharging ? `Charging ${powerPct}% (Release!)` : 'Hold & Release Power'}
+            </button>
+          </div>
 
           <button
             type="button"

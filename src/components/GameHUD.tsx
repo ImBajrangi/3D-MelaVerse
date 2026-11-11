@@ -797,7 +797,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <span className="text-xs font-mono font-bold text-[#FDE68A]">
               🎡 Riding{' '}
               {MELA_RIDES.find((r) => r.id === mountedRide)?.name ?? mountedRide}{' '}
-              (1st-Person Cabin View)
+              · Drag Mouse or A/D to Look 360° (+50 Joy XP)
             </span>
             <button
               type="button"
@@ -805,7 +805,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               onClick={onExitRide}
               className="px-3 py-1 rounded-lg bg-[#E11D48] hover:bg-[#BE123C] text-xs font-mono font-bold text-white cursor-pointer"
             >
-              Exit Ride [Esc]
+              [E / Esc] Exit Gondola
             </button>
           </div>
         )}

@@ -463,8 +463,157 @@ export function buildMelaRidesAndStalls(
   });
 
   // =========================================================================
-  // 5. OVERHEAD FAIRY LIGHT FESTOON STRINGS (Selective Bloom Bulbs)
+  // 5. DECORATIVE BRICK PATHWAYS, FAIRY-LIGHT ARCHES & RIDE TICKET BOOTH
   // =========================================================================
+  const brickPathMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x7c2d12,
+      roughness: 0.78,
+      metalness: 0.08,
+      emissive: 0x451a03,
+      emissiveIntensity: 0.12,
+    })
+  );
+  const pathBorderMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xd97706,
+      roughness: 0.45,
+      metalness: 0.45,
+      emissive: 0x78350f,
+      emissiveIntensity: 0.18,
+    })
+  );
+
+  // Helper to build a brick promenade & fairy-light arch corridor between two zones
+  const buildPromenadeCorridor = (
+    x1: number,
+    z1: number,
+    x2: number,
+    z2: number,
+    archCount: number
+  ) => {
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const len = Math.hypot(dx, dz);
+    const angle = Math.atan2(dx, dz);
+    const midX = (x1 + x2) * 0.5;
+    const midZ = (z1 + z2) * 0.5;
+
+    const walkway = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(3.8, 0.06, len)),
+      brickPathMat
+    );
+    walkway.position.set(midX, 0.025, midZ);
+    walkway.rotation.y = angle;
+    walkway.receiveShadow = true;
+    rootGroup.add(walkway);
+
+    // Raised brass-sandstone curbs along both sides of the brick pathway
+    [-1.95, 1.95].forEach((sideX) => {
+      const curb = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(0.18, 0.12, len)),
+        pathBorderMat
+      );
+      curb.position.set(
+        midX + Math.cos(angle) * sideX,
+        0.06,
+        midZ - Math.sin(angle) * sideX
+      );
+      curb.rotation.y = angle;
+      rootGroup.add(curb);
+    });
+
+    // Overhead Fairy-Light Arches along the pathway
+    const archPillarGeo = trackGeo(new THREE.CylinderGeometry(0.1, 0.12, 4.6, 8));
+    const archTopGeo = trackGeo(
+      new THREE.TorusGeometry(2.1, 0.08, 8, 20, Math.PI)
+    );
+    for (let a = 1; a <= archCount; a++) {
+      const t = a / (archCount + 1);
+      const ax = x1 + dx * t;
+      const az = z1 + dz * t;
+      const archGroup = new THREE.Group();
+      archGroup.position.set(ax, 0, az);
+      archGroup.rotation.y = angle;
+
+      [-2.1, 2.1].forEach((px) => {
+        const post = new THREE.Mesh(archPillarGeo, brassMat);
+        post.position.set(px, 2.3, 0);
+        archGroup.add(post);
+      });
+
+      const archSpan = new THREE.Mesh(archTopGeo, brassMat);
+      archSpan.position.set(0, 4.5, 0);
+      archGroup.add(archSpan);
+
+      // 5 Fairy-light bulbs along each arch crown
+      for (let b = -2; b <= 2; b++) {
+        const bAngle = Math.PI * 0.5 + b * 0.28;
+        const fBulb = new THREE.Mesh(
+          bulbGeo,
+          (a + b) % 2 === 0 ? neonAmberMat : neonMagentaMat
+        );
+        fBulb.position.set(
+          Math.cos(bAngle) * 2.1,
+          4.5 + Math.sin(bAngle) * 2.1,
+          0
+        );
+        enableBloom(fBulb);
+        archGroup.add(fBulb);
+      }
+
+      rootGroup.add(archGroup);
+    }
+  };
+
+  // Connect Central Sanctum Plaza (0, 0) -> Carnival Ride Grounds (34, -22)
+  buildPromenadeCorridor(9, -6, 33, -21, 3);
+  // Connect Central Sanctum Plaza (0, 0) -> Meena Bazaar & Game Stalls (-31, -13)
+  buildPromenadeCorridor(-9, -4, -30, -12, 3);
+
+  // Carnival Ticket Booth next to the Aakash Jhula Giant Wheel at (30, 0, -19)
+  const ticketBoothGroup = new THREE.Group();
+  ticketBoothGroup.position.set(30, 0, -19);
+  ticketBoothGroup.rotation.y = -0.65;
+  const boothBase = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(1.6, 1.75, 2.6, 8)),
+    crimsonStructuralMat
+  );
+  boothBase.position.y = 1.3;
+  ticketBoothGroup.add(boothBase);
+  const boothRoof = new THREE.Mesh(
+    trackGeo(new THREE.ConeGeometry(2.1, 1.3, 8)),
+    brassMat
+  );
+  boothRoof.position.y = 3.25;
+  ticketBoothGroup.add(boothRoof);
+  const boothSign = new THREE.Mesh(
+    trackGeo(new THREE.BoxGeometry(2.2, 0.42, 0.16)),
+    neonAmberMat
+  );
+  boothSign.position.set(0, 2.55, 1.45);
+  enableBloom(boothSign);
+  ticketBoothGroup.add(boothSign);
+  rootGroup.add(ticketBoothGroup);
+
+  // Grand Plaza Circular Pavings under Carnival Ride Grounds (38, -25) & Meena Bazaar (-34, -12)
+  const ridePlazaDisc = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(18.5, 19.0, 0.05, 36)),
+    brickPathMat
+  );
+  ridePlazaDisc.position.set(35, 0.018, -21);
+  ridePlazaDisc.receiveShadow = true;
+  rootGroup.add(ridePlazaDisc);
+
+  const bazaarPlazaDisc = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(16.5, 17.0, 0.05, 36)),
+    brickPathMat
+  );
+  bazaarPlazaDisc.position.set(-31, 0.018, -13);
+  bazaarPlazaDisc.receiveShadow = true;
+  rootGroup.add(bazaarPlazaDisc);
+
+  // Overhead Fairy Light Festoon Ring around Central Sanctum
   const festoonBulbGeo = trackGeo(new THREE.SphereGeometry(0.14, 6, 6));
   const festoonCount = 36;
   for (let i = 0; i < festoonCount; i++) {

@@ -91,13 +91,13 @@ export class MelaPhysicsWorld {
       // Ground plane collider
       const groundBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
       world.createCollider(
-        RAPIER.ColliderDesc.cuboid(65, 0.5, 65).setTranslation(0, -0.5, 0),
+        RAPIER.ColliderDesc.cuboid(85, 0.5, 85).setTranslation(0, -0.5, 0),
         groundBody
       );
 
-      // Outer Mela perimeter fence segments (16 octagonal/circular boundary walls at radius 38m)
+      // Outer Mela perimeter fence segments (16 octagonal/circular boundary walls at radius 58m)
       const wallSegments = 16;
-      const arenaRadius = 38.0;
+      const arenaRadius = 58.0;
       for (let i = 0; i < wallSegments; i++) {
         const angle = (i / wallSegments) * Math.PI * 2;
         const wx = Math.cos(angle) * arenaRadius;
@@ -113,7 +113,7 @@ export class MelaPhysicsWorld {
             })
         );
         world.createCollider(
-          RAPIER.ColliderDesc.cuboid(1.0, 3.0, 8.2),
+          RAPIER.ColliderDesc.cuboid(1.0, 3.0, 12.2),
           wallBody
         );
       }

@@ -153,6 +153,7 @@ export interface MelaStoreState {
   activeFoodBoostRemainingSec: number;
   activeFoodBoostName: string | null;
   hasVipPass: boolean;
+  firstRideFreeUsed: boolean;
   graphicsPreset: GraphicsQualityPreset;
   showFps: boolean;
   masterVolume: number;
@@ -208,6 +209,7 @@ export const useMelaStore = create<MelaStoreState>()(
       activeFoodBoostRemainingSec: 0,
       activeFoodBoostName: null,
       hasVipPass: false,
+      firstRideFreeUsed: false,
       graphicsPreset: 'high',
       showFps: true,
       masterVolume: 0.8,
@@ -362,15 +364,23 @@ export const useMelaStore = create<MelaStoreState>()(
 
       mountRide: (rideId, ticketCost) => {
         const state = get();
-        const effectiveCost = state.hasVipPass ? 0 : ticketCost;
+        const isFirstFree = !state.firstRideFreeUsed;
+        const effectiveCost = state.hasVipPass || isFirstFree ? 0 : ticketCost;
         if (state.coins < effectiveCost) {
           return {
             ok: false,
             reason: `Need ${effectiveCost} Coins to board (you have ${state.coins} Coins)`,
           };
         }
+        const skyStamp = 'Aakash Jhula Sky Voyager Stamp';
+        const nextStamps = state.unlockedStamps.includes(skyStamp)
+          ? state.unlockedStamps
+          : [...state.unlockedStamps, skyStamp];
         set({
           coins: state.coins - effectiveCost,
+          firstRideFreeUsed: true,
+          totalXp: state.totalXp + 50,
+          unlockedStamps: nextStamps,
           mountedRide: rideId,
           cameraMode: 'first_person',
           activeStallModal: null,
@@ -407,6 +417,7 @@ export const useMelaStore = create<MelaStoreState>()(
         equippedTrailColorHex: state.equippedTrailColorHex,
         equippedShieldSkin: state.equippedShieldSkin,
         hasVipPass: state.hasVipPass,
+        firstRideFreeUsed: state.firstRideFreeUsed,
         graphicsPreset: state.graphicsPreset,
         showFps: state.showFps,
         masterVolume: state.masterVolume,

@@ -12,7 +12,7 @@ interface RangoliModalProps {
   onClose: () => void;
 }
 
-const PRESET_POOKALAM: number[][] = [
+const PRESET_PEACOCK_CHAKRA: number[][] = [
   [0, 4, 4, 2, 1, 2, 4, 4, 0],
   [4, 2, 6, 5, 2, 5, 6, 2, 4],
   [4, 6, 1, 2, 5, 2, 1, 6, 4],
@@ -24,7 +24,19 @@ const PRESET_POOKALAM: number[][] = [
   [0, 4, 4, 2, 1, 2, 4, 4, 0],
 ];
 
-const PRESET_KOLAM: number[][] = [
+const PRESET_DIYA_STAR: number[][] = [
+  [0, 0, 2, 0, 1, 0, 2, 0, 0],
+  [0, 2, 5, 2, 5, 2, 5, 2, 0],
+  [2, 5, 1, 5, 2, 5, 1, 5, 2],
+  [0, 2, 5, 6, 5, 6, 5, 2, 0],
+  [1, 5, 2, 5, 1, 5, 2, 5, 1],
+  [0, 2, 5, 6, 5, 6, 5, 2, 0],
+  [2, 5, 1, 5, 2, 5, 1, 5, 2],
+  [0, 2, 5, 2, 5, 2, 5, 2, 0],
+  [0, 0, 2, 0, 1, 0, 2, 0, 0],
+];
+
+const PRESET_BRAJ_GEOMETRIC: number[][] = [
   [5, 0, 5, 0, 3, 0, 5, 0, 5],
   [0, 3, 5, 3, 5, 3, 5, 3, 0],
   [5, 5, 1, 5, 2, 5, 1, 5, 5],
@@ -85,6 +97,7 @@ export const RangoliModal: React.FC<RangoliModalProps> = ({
         aria-modal="true"
         aria-labelledby="rangoli-modal-title"
         onKeyDown={handleKeyDown}
+        data-testid="rangoli-studio-modal"
         className="w-full max-w-3xl rounded-xl border border-[#F59E0B]/50 p-6 shadow-2xl text-[#FFF8F0]"
         style={{ backgroundColor: '#1C0D0A' }}
       >
@@ -94,10 +107,10 @@ export const RangoliModal: React.FC<RangoliModalProps> = ({
               id="rangoli-modal-title"
               className="text-xl md:text-2xl font-display font-bold text-[#FFFBEB]"
             >
-              Sacred Rangoli, Pookalam &amp; Kolam Studio
+              Sacred Rangoli 4-Pattern Selector &amp; Mandala Studio
             </h2>
             <p className="text-xs text-[#FDE68A]/85 mt-1">
-              Paint symmetric mandala patterns using natural pigments. Your design updates the 3D Braj Courtyard Chowk in real time.
+              Choose one of the 4 sacred Rangoli patterns or paint custom symmetric mandalas. Your design stamps onto the 3D floor in real time!
             </p>
           </div>
           <button
@@ -139,28 +152,51 @@ export const RangoliModal: React.FC<RangoliModalProps> = ({
               )}
             </div>
 
-            {/* Preset Templates */}
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+            {/* 4-Pattern Quick Rangoli Selector */}
+            <div className="grid grid-cols-2 gap-2 mt-3 w-full">
               <button
                 type="button"
-                onClick={() => onUpdateGrid(DEFAULT_RANGOLI_GRID)}
-                className="px-2.5 py-1 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/35 text-xs text-[#FDE68A] cursor-pointer whitespace-nowrap"
+                data-testid="rangoli-pattern-lotus"
+                onClick={() => {
+                  melaverseAudio.playUiClick();
+                  onUpdateGrid(DEFAULT_RANGOLI_GRID);
+                }}
+                className="px-2.5 py-1.5 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-xs font-semibold text-[#FDE68A] cursor-pointer whitespace-nowrap"
               >
-                Braj Lotus Preset
+                1. Lotus Mandala
               </button>
               <button
                 type="button"
-                onClick={() => onUpdateGrid(PRESET_POOKALAM)}
-                className="px-2.5 py-1 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/35 text-xs text-[#FDE68A] cursor-pointer whitespace-nowrap"
+                data-testid="rangoli-pattern-peacock"
+                onClick={() => {
+                  melaverseAudio.playUiClick();
+                  onUpdateGrid(PRESET_PEACOCK_CHAKRA);
+                }}
+                className="px-2.5 py-1.5 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-xs font-semibold text-[#FDE68A] cursor-pointer whitespace-nowrap"
               >
-                Onam Pookalam
+                2. Peacock Chakra
               </button>
               <button
                 type="button"
-                onClick={() => onUpdateGrid(PRESET_KOLAM)}
-                className="px-2.5 py-1 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/35 text-xs text-[#FDE68A] cursor-pointer whitespace-nowrap"
+                data-testid="rangoli-pattern-diya"
+                onClick={() => {
+                  melaverseAudio.playUiClick();
+                  onUpdateGrid(PRESET_DIYA_STAR);
+                }}
+                className="px-2.5 py-1.5 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-xs font-semibold text-[#FDE68A] cursor-pointer whitespace-nowrap"
               >
-                Tamil Sikku Kolam
+                3. Diya Star
+              </button>
+              <button
+                type="button"
+                data-testid="rangoli-pattern-braj"
+                onClick={() => {
+                  melaverseAudio.playUiClick();
+                  onUpdateGrid(PRESET_BRAJ_GEOMETRIC);
+                }}
+                className="px-2.5 py-1.5 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-xs font-semibold text-[#FDE68A] cursor-pointer whitespace-nowrap"
+              >
+                4. Braj Geometric
               </button>
             </div>
           </div>

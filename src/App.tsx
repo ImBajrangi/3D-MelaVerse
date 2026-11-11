@@ -92,7 +92,29 @@ export function App() {
   });
 
   const [outcome, setOutcome] = useState<GameOutcome>('none');
-  const [activeWorld, setActiveWorld] = useState<FestivalWorldId>('holi_braj');
+  const [activeWorld, setActiveWorldState] =
+    useState<FestivalWorldId>('holi_braj');
+  const [worldTransitionBanner, setWorldTransitionBanner] = useState<
+    string | null
+  >(null);
+
+  const setActiveWorld = useCallback((nextWorld: FestivalWorldId) => {
+    setActiveWorldState((prev) => {
+      if (prev !== nextWorld) {
+        const label =
+          nextWorld === 'holi_braj'
+            ? 'Entering World 01: Holi — Braj (Sanctum Courtyard & Color Vats)'
+            : nextWorld === 'diwali_ghat'
+            ? 'Entering World 02: Diwali — Ghat (Sacred River, Diyas & Fireworks)'
+            : 'Entering Mela Central Hub (Sanctum Plaza, Ride Grounds & Meena Bazaar)';
+        setWorldTransitionBanner(label);
+        window.setTimeout(() => {
+          setWorldTransitionBanner(null);
+        }, 2800);
+      }
+      return nextWorld;
+    });
+  }, []);
   const [selectedGulal, setSelectedGulal] = useState<GulalColorId>('gulabi');
   const [selectedArsenal, setSelectedArsenal] =
     useState<ArsenalModeId>('pichkari');
@@ -471,6 +493,17 @@ export function App() {
           setGameState((prev) => (prev === 'playing' ? 'paused' : 'playing'))
         }
       />
+
+      {/* Smooth World Portal / Stage Transition Banner */}
+      {worldTransitionBanner && (
+        <div
+          data-testid="world-transition-banner"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-40 pointer-events-none px-5 py-2 rounded-full bg-black/85 backdrop-blur-md border border-[#FBBF24] text-xs font-mono font-bold text-[#FFFBEB] shadow-[0_8px_28px_rgba(0,0,0,0.9)] flex items-center gap-2"
+        >
+          <span className="w-2 h-2 rounded-full bg-[#FBBF24] animate-ping" />
+          <span>{worldTransitionBanner}</span>
+        </div>
+      )}
 
       {/* Title Screen Stage (Landing Menu State: isPlaying === false) */}
       {gameState === 'title' && (
