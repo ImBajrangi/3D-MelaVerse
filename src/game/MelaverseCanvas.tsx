@@ -182,50 +182,49 @@ const _beamMidVec3 = new THREE.Vector3();
 const _projScreenVec3 = new THREE.Vector3();
 
 function createSandstoneTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const size = 1024;
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = '#8A422D';
-  ctx.fillRect(0, 0, 256, 256);
+  // Deep Royal Slate & Warm Basalt Cobblestone (#1e1b24 base with #2d2633 stone tiles and #3d3142 mortar lines)
+  ctx.fillStyle = '#1e1b24';
+  ctx.fillRect(0, 0, size, size);
 
-  // Ashlar stone blocks with warm Braj sandstone variation
-  const blockH = 32;
-  const blockW = 64;
-  for (let row = 0; row < 8; row++) {
-    const offset = (row % 2) * 32;
-    for (let col = -1; col < 5; col++) {
+  const rows = 16;
+  const cols = 8;
+  const blockH = size / rows;
+  const blockW = size / cols;
+
+  for (let row = 0; row < rows; row++) {
+    const offset = (row % 2) * (blockW * 0.5);
+    for (let col = -1; col <= cols; col++) {
       const x = col * blockW + offset;
       const y = row * blockH;
-      const shade = (Math.sin(row * 3.7 + col * 2.3) * 0.5 + 0.5) * 18 - 9;
-      ctx.fillStyle = `rgb(${146 + shade}, ${72 + shade * 0.6}, ${48 + shade * 0.4})`;
-      ctx.fillRect(x + 2, y + 2, blockW - 3, blockH - 3);
-      ctx.strokeStyle = 'rgba(42, 18, 12, 0.50)';
+      const v = Math.round(
+        (Math.sin(row * 3.7 + col * 2.3) * 0.5 + 0.5) * 8 - 4
+      );
+      ctx.fillStyle = `rgb(${45 + v}, ${38 + v}, ${51 + v})`;
+      ctx.fillRect(x + 3, y + 3, blockW - 6, blockH - 6);
+
+      ctx.strokeStyle = '#3d3142';
       ctx.lineWidth = 2;
-      ctx.strokeRect(x + 1, y + 1, blockW - 2, blockH - 2);
+      ctx.strokeRect(x + 2, y + 2, blockW - 4, blockH - 4);
+
+      ctx.fillStyle = 'rgba(255, 236, 209, 0.03)';
+      ctx.fillRect(x + 5, y + 5, blockW - 10, 3);
     }
   }
-
-  // Festive gulal dust specks on courtyard stones
-  const gulalHues = ['#F43F5E', '#F59E0B', '#38BDF8', '#A855F7', '#10B981'];
-  for (let i = 0; i < 55; i++) {
-    ctx.fillStyle = gulalHues[i % gulalHues.length];
-    ctx.globalAlpha = 0.22;
-    const rx = (i * 73) % 256;
-    const ry = (i * 139) % 256;
-    const rad = 4 + (i % 9);
-    ctx.beginPath();
-    ctx.arc(rx, ry, rad, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1.0;
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(16, 16);
+  tex.repeat.set(22, 22);
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
   tex.anisotropy = maxAnisotropy;
   return tex;
 }
@@ -243,26 +242,126 @@ function drawRangoliMandalaToCanvas(
 
   ctx.clearRect(0, 0, w, h);
 
-  const grad = ctx.createRadialGradient(cx, cy, 12, cx, cy, w * 0.48);
-  grad.addColorStop(0, '#5A221A');
-  grad.addColorStop(0.75, '#351510');
-  grad.addColorStop(1, 'rgba(42, 17, 13, 0)');
-  ctx.fillStyle = grad;
+  // Sample palette colors from the 9x9 rangoliGrid so custom user strokes dynamically tint the Mandala rings
+  const sampleHex = (r: number, c: number, fallback: string) => {
+    const val = grid[r]?.[c] ?? 0;
+    if (val > 0 && RANGOLI_PIGMENTS[val]) {
+      return RANGOLI_PIGMENTS[val].hex;
+    }
+    return fallback;
+  };
+  const primaryColor = sampleHex(4, 4, '#F59E0B');
+  const innerPetalColor = sampleHex(3, 4, '#E11D48');
+  const midPetalColor = sampleHex(2, 4, '#F97316');
+  const outerPetalColor = sampleHex(1, 4, '#EC4899');
+  const starAccentColor = sampleHex(2, 2, '#FACC15');
+  const tealAccentColor = sampleHex(0, 4, '#14B8A6');
+
+  // 1. Deep Terracotta-Plum Sacred Mandala Base Disc
+  const baseGrad = ctx.createRadialGradient(cx, cy, w * 0.03, cx, cy, w * 0.485);
+  baseGrad.addColorStop(0, '#361928');
+  baseGrad.addColorStop(0.58, '#281320');
+  baseGrad.addColorStop(0.92, '#1d1019');
+  baseGrad.addColorStop(1, 'rgba(29, 16, 25, 0)');
+  ctx.fillStyle = baseGrad;
   ctx.beginPath();
-  ctx.arc(cx, cy, w * 0.48, 0, Math.PI * 2);
+  ctx.arc(cx, cy, w * 0.485, 0, Math.PI * 2);
   ctx.fill();
 
-  const petalCount = 16;
-  for (let i = 0; i < petalCount; i++) {
-    const angle = (i / petalCount) * Math.PI * 2;
+  // 2. Outer Scalloped 24-Petal Kolam Border Ring
+  const outerPetals = 24;
+  for (let i = 0; i < outerPetals; i++) {
+    const angle = (i / outerPetals) * Math.PI * 2;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(angle);
     ctx.beginPath();
-    ctx.moveTo(0, -w * 0.34);
-    ctx.quadraticCurveTo(w * 0.06, -w * 0.41, 0, -w * 0.46);
-    ctx.quadraticCurveTo(-w * 0.06, -w * 0.41, 0, -w * 0.34);
-    ctx.fillStyle = i % 2 === 0 ? '#F59E0B' : '#E11D48';
+    ctx.moveTo(0, -w * 0.38);
+    ctx.quadraticCurveTo(w * 0.045, -w * 0.435, 0, -w * 0.472);
+    ctx.quadraticCurveTo(-w * 0.045, -w * 0.435, 0, -w * 0.38);
+    ctx.fillStyle = i % 2 === 0 ? outerPetalColor : starAccentColor;
+    ctx.fill();
+    ctx.strokeStyle = '#FFFBEB';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 3. Concentric Chalk-White & Turmeric Geometric Border Rings
+  const ringRadii = [0.475, 0.382, 0.295, 0.205, 0.115];
+  ringRadii.forEach((rRatio, idx) => {
+    ctx.strokeStyle = idx % 2 === 0 ? '#FFFBEB' : '#FDE68A';
+    ctx.lineWidth = idx === 0 ? 3.5 : 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, w * rRatio, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // 4. Mid-Ring 16-Pointed Geometric Star & Lotus Petals
+  const midPetals = 16;
+  for (let i = 0; i < midPetals; i++) {
+    const angle = (i / midPetals) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(0, -w * 0.205);
+    ctx.quadraticCurveTo(w * 0.052, -w * 0.295, 0, -w * 0.375);
+    ctx.quadraticCurveTo(-w * 0.052, -w * 0.295, 0, -w * 0.205);
+    ctx.fillStyle =
+      i % 3 === 0
+        ? midPetalColor
+        : i % 3 === 1
+        ? innerPetalColor
+        : tealAccentColor;
+    ctx.fill();
+    ctx.strokeStyle = '#FFFBEB';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // Fine inner kolam spine line inside each lotus petal
+    ctx.strokeStyle = '#FDE68A';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -w * 0.225);
+    ctx.lineTo(0, -w * 0.345);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 5. Inner 12-Petal Sacred Padma (Lotus) Ring
+  const innerPetals = 12;
+  for (let i = 0; i < innerPetals; i++) {
+    const angle = (i / innerPetals) * Math.PI * 2 + Math.PI / innerPetals;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(0, -w * 0.115);
+    ctx.quadraticCurveTo(w * 0.048, -w * 0.165, 0, -w * 0.202);
+    ctx.quadraticCurveTo(-w * 0.048, -w * 0.165, 0, -w * 0.115);
+    ctx.fillStyle = i % 2 === 0 ? innerPetalColor : starAccentColor;
+    ctx.fill();
+    ctx.strokeStyle = '#FFFBEB';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 6. Central 8-Pointed Suryamukhi Star Chakra
+  const centerPoints = 8;
+  for (let i = 0; i < centerPoints; i++) {
+    const angle = (i / centerPoints) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(0, -w * 0.025);
+    ctx.lineTo(w * 0.028, -w * 0.068);
+    ctx.lineTo(0, -w * 0.112);
+    ctx.lineTo(-w * 0.028, -w * 0.068);
+    ctx.closePath();
+    ctx.fillStyle = primaryColor;
     ctx.fill();
     ctx.strokeStyle = '#FFFBEB';
     ctx.lineWidth = 2;
@@ -270,38 +369,11 @@ function drawRangoliMandalaToCanvas(
     ctx.restore();
   }
 
-  ctx.strokeStyle = '#FDE68A';
-  ctx.lineWidth = 3;
+  // Crisp Rice-Flour Bindu Center
+  ctx.fillStyle = '#FFFBEB';
   ctx.beginPath();
-  ctx.arc(cx, cy, w * 0.34, 0, Math.PI * 2);
-  ctx.stroke();
-
-  const rows = grid.length;
-  const cols = grid[0]?.length || 9;
-  const gridSpan = w * 0.46;
-  const cellW = gridSpan / cols;
-  const startX = cx - gridSpan / 2;
-  const startY = cy - gridSpan / 2;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const val = grid[r][c];
-      if (val <= 0) continue;
-      const pigment = RANGOLI_PIGMENTS[val] || RANGOLI_PIGMENTS[1];
-      const px = startX + (c + 0.5) * cellW;
-      const py = startY + (r + 0.5) * cellW;
-
-      ctx.fillStyle = pigment.hex;
-      ctx.beginPath();
-      ctx.arc(px, py, cellW * 0.44, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = '#FFFBEB';
-      ctx.beginPath();
-      ctx.arc(px, py, cellW * 0.14, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
+  ctx.arc(cx, cy, w * 0.022, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Helper to build a composite 8-part 3D human character (Player, NPC, or Challenger)
@@ -580,11 +652,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.85;
+    renderer.toneMappingExposure = 0.9;
     renderer.setPixelRatio(
       isSoftwareGl
         ? 1
-        : Math.min(window.devicePixelRatio, initialPresetCfg.maxPixelRatio)
+        : Math.min(window.devicePixelRatio, 2, initialPresetCfg.maxPixelRatio)
     );
     renderer.shadowMap.enabled = !isSoftwareGl && initialPresetCfg.shadowsEnabled;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -600,18 +672,18 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // 2. Scene, Twilight Festival Skybox & Camera
+    // 2. Scene, Deep Indigo-Velvet Skybox & Camera
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x160a24);
-    scene.fog = new THREE.FogExp2(0x220e2c, 0.0034);
+    scene.background = new THREE.Color(0x0b0818);
+    scene.fog = new THREE.FogExp2(0x110c22, 0.0024);
 
-    // Custom Gradient Twilight Sky Dome (#07051a zenith blending into #2a1138 warm magenta-indigo horizon)
+    // Custom Deep Indigo-Velvet Gradient Sky Dome (#050414 zenith -> #1b1236 horizon)
     const skyDomeGeo = new THREE.SphereGeometry(165, 32, 24);
     const skyPosAttr = skyDomeGeo.attributes.position;
     const skyColors = new Float32Array(skyPosAttr.count * 3);
-    const zenithColor = new THREE.Color(0x07051a);
-    const midSkyColor = new THREE.Color(0x180b2c);
-    const horizonColor = new THREE.Color(0x2a1138);
+    const zenithColor = new THREE.Color(0x050414);
+    const midSkyColor = new THREE.Color(0x0e0a24);
+    const horizonColor = new THREE.Color(0x1b1236);
     const tempSkyColor = new THREE.Color();
 
     for (let i = 0; i < skyPosAttr.count; i++) {
@@ -638,9 +710,9 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     const skyDomeMesh = new THREE.Mesh(skyDomeGeo, skyDomeMat);
     scene.add(skyDomeMesh);
 
-    // 400 Instanced Twinkling Night Stars across the Twilight Dome
-    const STAR_COUNT = 400;
-    const starGeo = new THREE.OctahedronGeometry(0.28, 0);
+    // 320 Crisp Tiny Stars across the Upper Indigo-Velvet Sky Dome
+    const STAR_COUNT = 320;
+    const starGeo = new THREE.OctahedronGeometry(0.19, 0);
     const starMat = new THREE.MeshBasicMaterial({
       color: 0xfffbeb,
       fog: false,
@@ -650,13 +722,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     const starBasePositions: { x: number; y: number; z: number; phase: number; baseScale: number }[] = [];
     for (let s = 0; s < STAR_COUNT; s++) {
       const theta = (s * 2.39996) % (Math.PI * 2);
-      const u = 0.14 + ((s * 97) % 86) / 100;
+      const u = 0.22 + ((s * 97) % 78) / 100;
       const phi = Math.acos(u);
       const r = 148;
       const sx = r * Math.sin(phi) * Math.cos(theta);
       const sy = r * Math.cos(phi);
       const sz = r * Math.sin(phi) * Math.sin(theta);
-      const bScale = 0.55 + (s % 5) * 0.22;
+      const bScale = 0.45 + (s % 4) * 0.16;
       starBasePositions.push({ x: sx, y: sy, z: sz, phase: s * 0.73, baseScale: bScale });
       _dummyObj.position.set(sx, sy, sz);
       _dummyObj.scale.setScalar(bScale);
@@ -673,13 +745,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     }
     scene.add(starInstanced);
 
-    // 35 Slowly Rising Warm Golden Sky Lanterns (Akash Kandil) drifting upward across the night sky
-    const SKY_LANTERN_COUNT = 35;
-    const skyLanternGeo = new THREE.CylinderGeometry(0.34, 0.24, 0.72, 8);
+    // 20 Well-Spaced Warm Golden Sky Lanterns (Akash Kandil) at High Altitude (y > 28) so they never overlap Ferris Wheel spokes
+    const SKY_LANTERN_COUNT = 20;
+    const skyLanternGeo = new THREE.CylinderGeometry(0.32, 0.22, 0.68, 8);
     const skyLanternMat = new THREE.MeshStandardMaterial({
       color: 0xfef08a,
       emissive: 0xf59e0b,
-      emissiveIntensity: 1.85,
+      emissiveIntensity: 1.75,
       roughness: 0.3,
     });
     const skyLanternInstanced = new THREE.InstancedMesh(
@@ -689,14 +761,14 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     );
     skyLanternInstanced.frustumCulled = false;
     const skyLanternStates = Array.from({ length: SKY_LANTERN_COUNT }, (_, idx) => {
-      const angle = (idx / SKY_LANTERN_COUNT) * Math.PI * 2 + (idx % 3) * 0.25;
-      const dist = 24 + (idx % 7) * 6.5;
+      const angle = (idx / SKY_LANTERN_COUNT) * Math.PI * 2 + (idx % 3) * 0.32;
+      const dist = 28 + (idx % 5) * 8.5;
       return {
         baseX: Math.cos(angle) * dist,
-        y: 6.5 + ((idx * 11) % 34),
-        baseZ: Math.sin(angle) * dist - 6,
-        riseSpeed: 0.55 + (idx % 5) * 0.14,
-        phase: idx * 1.15,
+        y: 28.5 + ((idx * 7) % 22),
+        baseZ: Math.sin(angle) * dist - 14,
+        riseSpeed: 0.42 + (idx % 4) * 0.1,
+        phase: idx * 1.25,
       };
     });
     scene.add(skyLanternInstanced);
@@ -706,14 +778,26 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     scene.environmentIntensity = 0.45;
     pmremGenerator.dispose();
 
-    const camera = new THREE.PerspectiveCamera(52, initW / initH, 0.2, 260);
-    camera.position.set(3.5, 6.8, 12.5);
-    camera.lookAt(0, 1.8, -3.5);
+    const camera = new THREE.PerspectiveCamera(54, initW / initH, 0.2, 260);
+    camera.position.set(-4.2, 7.4, 17.2);
+    camera.lookAt(5.5, 4.4, -15.5);
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 2B. Post-Processing Pipeline with Calibrated UnrealBloomPass (threshold 0.88, strength 0.4, radius 0.5)
-    const composer = new EffectComposer(renderer);
+    // 2B. Post-Processing Pipeline with 4x MSAA RenderTarget & Restrained UnrealBloomPass (threshold 0.92, strength 0.28, radius 0.35)
+    const activePixelRatio = isSoftwareGl
+      ? 1
+      : Math.min(window.devicePixelRatio, 2, initialPresetCfg.maxPixelRatio);
+    const msaaRenderTarget = new THREE.WebGLRenderTarget(
+      initW * activePixelRatio,
+      initH * activePixelRatio,
+      {
+        samples: isSoftwareGl ? 0 : 4,
+        type: THREE.HalfFloatType,
+      }
+    );
+    const composer = new EffectComposer(renderer, msaaRenderTarget);
+    composer.setPixelRatio(activePixelRatio);
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
@@ -723,9 +807,9 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       initialPresetCfg.bloomRadius,
       initialPresetCfg.bloomThreshold
     );
-    bloomPass.threshold = 0.88;
-    bloomPass.strength = initialPresetCfg.bloomEnabled ? 0.4 : 0;
-    bloomPass.radius = 0.5;
+    bloomPass.threshold = 0.92;
+    bloomPass.strength = initialPresetCfg.bloomEnabled ? 0.28 : 0;
+    bloomPass.radius = 0.35;
     bloomPass.enabled = !isSoftwareGl && initialPresetCfg.bloomEnabled;
     composer.addPass(bloomPass);
 
@@ -734,9 +818,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
     const applyGraphicsPresetToPipeline = (preset: GraphicsQualityPreset) => {
       const cfg = GRAPHICS_PRESETS[preset];
-      renderer.setPixelRatio(
-        isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, cfg.maxPixelRatio)
-      );
+      const nextRatio = isSoftwareGl
+        ? 1
+        : Math.min(window.devicePixelRatio, 2, cfg.maxPixelRatio);
+      renderer.setPixelRatio(nextRatio);
+      composer.setPixelRatio(nextRatio);
       renderer.shadowMap.enabled = !isSoftwareGl && cfg.shadowsEnabled;
       if (!isSoftwareGl && keyLight.shadow.mapSize.width !== cfg.shadowMapSize) {
         keyLight.shadow.mapSize.width = cfg.shadowMapSize;
@@ -865,13 +951,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     if (crowdJoyInstanced.instanceColor) {
       crowdJoyInstanced.instanceColor.needsUpdate = true;
     }
+    // Hide primitive capsule/sphere bowling-pin crowd meshes so only articulated characters render
+    crowdBodyInstanced.visible = false;
+    crowdHeadInstanced.visible = false;
+    crowdJoyInstanced.visible = false;
     scene.add(crowdBodyInstanced, crowdHeadInstanced, crowdJoyInstanced);
 
-    // 4. Ground & Courtyard Surfaces (Warm Sandstone PBR with zero bloom glare)
-    const outerTerrainGeo = new THREE.PlaneGeometry(200, 200);
+    // 4. Ground & Courtyard Surfaces (Deep Royal Slate & Warm Basalt Cobblestone — High Color Separation)
+    const outerTerrainGeo = new THREE.PlaneGeometry(220, 220);
     outerTerrainGeo.rotateX(-Math.PI / 2);
     const outerTerrainMat = new THREE.MeshStandardMaterial({
-      color: 0x3d1e16,
+      color: 0x141118,
       roughness: 0.92,
       metalness: 0.02,
     });
@@ -881,95 +971,103 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     scene.add(outerTerrain);
 
     const sandstoneTex = createSandstoneTexture(maxAnisotropy);
-    sandstoneTex.repeat.set(28, 28);
-    const courtyardGeo = new THREE.CircleGeometry(58.0, 64);
+    sandstoneTex.repeat.set(24, 24);
+    const courtyardGeo = new THREE.CircleGeometry(60.0, 64);
     courtyardGeo.rotateX(-Math.PI / 2);
     const courtyardMat = new THREE.MeshStandardMaterial({
-      color: 0xe7c5b2,
+      color: 0xffffff,
       map: sandstoneTex,
-      roughness: 0.78,
-      metalness: 0.06,
-      emissive: 0x1a0a06,
-      emissiveIntensity: 0.05,
+      roughness: 0.85,
+      metalness: 0.04,
+      emissive: 0x000000,
+      emissiveIntensity: 0,
     });
     const courtyardFloor = new THREE.Mesh(courtyardGeo, courtyardMat);
     courtyardFloor.position.y = 0;
     courtyardFloor.receiveShadow = true;
     scene.add(courtyardFloor);
 
-    // Warm Sandstone PBR & Restrained Brass Materials (emissiveIntensity <= 0.18 on architecture)
-    const parapetRingGeo = new THREE.TorusGeometry(57.5, 0.42, 8, 72);
+    // Warm Chunar Sandstone (#d49b6a), Ivory-Gold (#e8c391) & Gold Kalash (#f5b841) Materials
+    const parapetRingGeo = new THREE.TorusGeometry(59.2, 0.36, 8, 72);
     parapetRingGeo.rotateX(Math.PI / 2);
     const sandstoneCarvedMat = new THREE.MeshStandardMaterial({
-      color: 0xa84c24,
-      roughness: 0.75,
-      metalness: 0.1,
-      emissive: 0x2a1008,
-      emissiveIntensity: 0.08,
+      color: 0xd49b6a,
+      roughness: 0.72,
+      metalness: 0.08,
+      emissive: 0x1a0c04,
+      emissiveIntensity: 0.04,
     });
     const sandstoneDeepMat = new THREE.MeshStandardMaterial({
-      color: 0x853818,
-      roughness: 0.78,
+      color: 0xb87d4b,
+      roughness: 0.76,
       metalness: 0.08,
-      emissive: 0x1f0b05,
-      emissiveIntensity: 0.06,
+      emissive: 0x140803,
+      emissiveIntensity: 0.03,
     });
     const brassTrimMat = new THREE.MeshStandardMaterial({
-      color: 0xd99b26,
-      roughness: 0.38,
-      metalness: 0.65,
-      emissive: 0x452205,
-      emissiveIntensity: 0.12,
+      color: 0xf5b841,
+      roughness: 0.32,
+      metalness: 0.76,
+      emissive: 0x2e1c04,
+      emissiveIntensity: 0.08,
     });
     const whiteMarbleMat = new THREE.MeshStandardMaterial({
-      color: 0xe6dac8,
-      roughness: 0.62,
-      metalness: 0.08,
-      emissive: 0x1f1610,
-      emissiveIntensity: 0.05,
+      color: 0xe8c391,
+      roughness: 0.58,
+      metalness: 0.12,
+      emissive: 0x1c1208,
+      emissiveIntensity: 0.04,
     });
 
     const parapetMesh = new THREE.Mesh(parapetRingGeo, sandstoneCarvedMat);
-    parapetMesh.position.y = 0.22;
+    parapetMesh.position.y = 0.2;
     scene.add(parapetMesh);
 
-    // Central Octagonal Chowk Platform & Dynamic Rangoli Mandala Decal (emissiveIntensity <= 0.15)
-    const chowkPlinthGeo = new THREE.CylinderGeometry(5.6, 6.1, 0.18, 8);
-    const chowkPlinth = new THREE.Mesh(chowkPlinthGeo, sandstoneDeepMat);
-    chowkPlinth.position.set(0, 0.09, 0);
-    chowkPlinth.receiveShadow = true;
-    scene.add(chowkPlinth);
+    // Authentic High-Res (1024x1024) Floor Rangoli Mandala Mapped onto a Flat Circular Plane (y = 0.02, emissiveIntensity = 0.15)
+    const rangoliBorderRingGeo = new THREE.RingGeometry(4.82, 5.12, 64);
+    rangoliBorderRingGeo.rotateX(-Math.PI / 2);
+    const rangoliBorderRing = new THREE.Mesh(
+      rangoliBorderRingGeo,
+      whiteMarbleMat
+    );
+    rangoliBorderRing.position.set(0, 0.014, 0);
+    rangoliBorderRing.receiveShadow = true;
+    scene.add(rangoliBorderRing);
 
     const rangoliCanvas = document.createElement('canvas');
-    rangoliCanvas.width = 512;
-    rangoliCanvas.height = 512;
+    rangoliCanvas.width = 1024;
+    rangoliCanvas.height = 1024;
     drawRangoliMandalaToCanvas(rangoliCanvas, propsRef.current.rangoliGrid);
     rangoliCanvasRef.current = rangoliCanvas;
 
     const rangoliTex = new THREE.CanvasTexture(rangoliCanvas);
     rangoliTex.colorSpace = THREE.SRGBColorSpace;
+    rangoliTex.minFilter = THREE.LinearMipmapLinearFilter;
+    rangoliTex.magFilter = THREE.LinearFilter;
+    rangoliTex.generateMipmaps = true;
     rangoliTex.anisotropy = maxAnisotropy;
     rangoliTextureRef.current = rangoliTex;
 
-    const rangoliPlaneGeo = new THREE.CircleGeometry(4.8, 32);
+    const rangoliPlaneGeo = new THREE.CircleGeometry(4.85, 64);
     rangoliPlaneGeo.rotateX(-Math.PI / 2);
     const rangoliPlaneMat = new THREE.MeshStandardMaterial({
-      color: 0xf5ebe1,
+      color: 0xffffff,
       map: rangoliTex,
       transparent: true,
-      roughness: 0.72,
-      metalness: 0.05,
-      emissive: 0x3b1810,
-      emissiveIntensity: 0.12,
+      roughness: 0.78,
+      metalness: 0.04,
+      emissive: 0x2a120a,
+      emissiveIntensity: 0.15,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     });
     const rangoliDisc = new THREE.Mesh(rangoliPlaneGeo, rangoliPlaneMat);
-    rangoliDisc.position.set(0, 0.2, 0);
+    rangoliDisc.position.set(0, 0.02, 0);
+    rangoliDisc.receiveShadow = true;
     scene.add(rangoliDisc);
 
-    // 5. Landmark Vista: Ornate Braj Mandap / Temple with Carved Pillars, Stepped Plinths, Chhatri Domes & Marigold Torans
+    // 5. Landmark Vista: Ornate Braj Mandap / Temple with Chunar Sandstone Body, Ivory-Gold Carved Pillars & Nagara Shikhara
     const mandirGroup = new THREE.Group();
     mandirGroup.position.set(0, 0, -22.5);
     scene.add(mandirGroup);
@@ -1002,7 +1100,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       mandirGroup.add(step);
     }
 
-    // 8 Carved Sandstone Pillars with Fluted Bases, Moulded Rings & Bracket Capitals
+    // 8 Carved Ivory-Gold Pillars (#e8c391) with Fluted Bases, Brass Moulded Rings & Bracket Capitals
     const pillarGeo = new THREE.CylinderGeometry(0.34, 0.42, 4.6, 12);
     const pillarBaseGeo = new THREE.BoxGeometry(1.05, 0.45, 1.05);
     const pillarRingGeo = new THREE.TorusGeometry(0.39, 0.08, 8, 16);
@@ -1015,7 +1113,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         pBase.position.set(px, 1.65, pz);
         mandirGroup.add(pBase);
 
-        const pillar = new THREE.Mesh(pillarGeo, sandstoneCarvedMat);
+        const pillar = new THREE.Mesh(pillarGeo, whiteMarbleMat);
         pillar.position.set(px, 3.8, pz);
         pillar.castShadow = true;
         mandirGroup.add(pillar);
@@ -1026,7 +1124,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
         const cap = new THREE.Mesh(
           new THREE.BoxGeometry(1.18, 0.36, 1.18),
-          sandstoneDeepMat
+          whiteMarbleMat
         );
         cap.position.set(px, 6.05, pz);
         mandirGroup.add(cap);
@@ -1322,60 +1420,117 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     sanctumDiyaFlame.position.set(0, 2.6, 2.65);
     mandirGroup.add(sanctumDiyaFlame);
 
-    // 6. Four Flanking Braj Havelis & Mithai / Rangoli Stalls
-    const buildHaveliFacade = (
+    // 6. Open, Airy Indian Bazaar Pavilions on West Courtyard Edge (Slender Carved Pillars + Scalloped Canopy Roof + Inner Lantern)
+    const pavilionWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x5c361e,
+      roughness: 0.74,
+      metalness: 0.08,
+    });
+    const pavilionLanternMat = new THREE.MeshStandardMaterial({
+      color: 0xfffbeb,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 1.55,
+      roughness: 0.25,
+    });
+    const buildOpenCourtyardPavilion = (
       x: number,
       z: number,
       rotY: number,
       canopyColor: number
     ) => {
-      const haveli = new THREE.Group();
-      haveli.position.set(x, 0, z);
-      haveli.rotation.y = rotY;
+      const pav = new THREE.Group();
+      pav.position.set(x, 0, z);
+      pav.rotation.y = rotY;
 
-      const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(9.5, 5.4, 3.6),
-        sandstoneCarvedMat
+      const plinth = new THREE.Mesh(
+        new THREE.BoxGeometry(5.0, 0.16, 3.4),
+        sandstoneDeepMat
       );
-      wall.position.y = 2.7;
-      wall.castShadow = true;
-      wall.receiveShadow = true;
-      haveli.add(wall);
+      plinth.position.y = 0.08;
+      plinth.receiveShadow = true;
+      pav.add(plinth);
 
-      const jharokha = new THREE.Mesh(
-        new THREE.BoxGeometry(3.4, 2.2, 1.4),
+      // 4 Slender Carved Wooden Corner Pillars (radius: 0.12)
+      const colGeo = new THREE.CylinderGeometry(0.11, 0.12, 3.5, 10);
+      const colRingGeo = new THREE.TorusGeometry(0.145, 0.03, 8, 14);
+      colRingGeo.rotateX(Math.PI / 2);
+      const corners = [
+        [-2.15, -1.35],
+        [2.15, -1.35],
+        [-2.15, 1.35],
+        [2.15, 1.35],
+      ];
+      corners.forEach(([cx, cz]) => {
+        const col = new THREE.Mesh(colGeo, pavilionWoodMat);
+        col.position.set(cx, 1.85, cz);
+        col.castShadow = true;
+        pav.add(col);
+
+        const ring = new THREE.Mesh(colRingGeo, brassTrimMat);
+        ring.position.set(cx, 2.8, cz);
+        pav.add(ring);
+      });
+
+      // Open Counter Table (height: 1.1)
+      const counterBase = new THREE.Mesh(
+        new THREE.BoxGeometry(3.8, 0.96, 0.95),
+        pavilionWoodMat
+      );
+      counterBase.position.set(0, 0.56, 0.85);
+      counterBase.castShadow = true;
+      pav.add(counterBase);
+
+      const counterTop = new THREE.Mesh(
+        new THREE.BoxGeometry(4.05, 0.12, 1.12),
         whiteMarbleMat
       );
-      jharokha.position.set(0, 3.8, 2.1);
-      haveli.add(jharokha);
+      counterTop.position.set(0, 1.1, 0.85);
+      pav.add(counterTop);
 
-      const dome = new THREE.Mesh(
-        new THREE.SphereGeometry(1.7, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
-        brassTrimMat
-      );
-      dome.position.set(0, 4.9, 2.1);
-      haveli.add(dome);
-
+      // Scalloped Fabric Canopy Roof with Gold Trim
       const canopyMat = new THREE.MeshStandardMaterial({
         color: canopyColor,
-        roughness: 0.68,
-        metalness: 0.05,
+        roughness: 0.62,
+        metalness: 0.06,
       });
-      const canopy = new THREE.Mesh(
-        new THREE.BoxGeometry(5.6, 0.22, 2.6),
+      const roofCone = new THREE.Mesh(
+        new THREE.ConeGeometry(3.45, 1.4, 4),
         canopyMat
       );
-      canopy.position.set(0, 2.65, 2.7);
-      canopy.rotation.x = 0.18;
-      haveli.add(canopy);
+      roofCone.position.set(0, 4.3, 0);
+      roofCone.rotation.y = Math.PI / 4;
+      roofCone.scale.set(1.08, 1, 0.78);
+      roofCone.castShadow = true;
+      pav.add(roofCone);
 
-      scene.add(haveli);
+      const goldValance = new THREE.Mesh(
+        new THREE.BoxGeometry(4.8, 0.12, 3.2),
+        brassTrimMat
+      );
+      goldValance.position.set(0, 3.6, 0);
+      pav.add(goldValance);
+
+      const finial = new THREE.Mesh(
+        new THREE.ConeGeometry(0.15, 0.42, 10),
+        brassTrimMat
+      );
+      finial.position.set(0, 5.15, 0);
+      pav.add(finial);
+
+      // Warm Inner Hanging Lantern Core
+      const lantern = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.11, 0.34, 8),
+        pavilionLanternMat
+      );
+      lantern.position.set(0, 3.2, 0.25);
+      pav.add(lantern);
+
+      scene.add(pav);
     };
 
-    buildHaveliFacade(-21, -8, Math.PI / 2.4, 0xe11d48);
-    buildHaveliFacade(21, -8, -Math.PI / 2.4, 0xf59e0b);
-    buildHaveliFacade(-21, 9, Math.PI / 1.7, 0x10b981);
-    buildHaveliFacade(21, 9, -Math.PI / 1.7, 0x0284c7);
+    // Place 2 open bazaar pavilions on the west side only so the east Ride Deck & Giant Wheel have 100% unobstructed silhouettes
+    buildOpenCourtyardPavilion(-21.5, -7.5, Math.PI / 2.5, 0x9e1b32);
+    buildOpenCourtyardPavilion(-21.5, 7.5, Math.PI / 1.75, 0x0f6b6e);
 
     // 6B. Overhead Festive Toran Bunting Garlands (64 Instanced Pennant Flags across the Courtyard)
     const buntingCount = 64;
@@ -1792,7 +1947,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       kiteMeshes.push({ mesh: kGroup, basePos, phase: k * 0.9 });
     }
 
-    // 9. Sacred Brass Diyas (6 Interactive Deepstambh Lamps around the Chowk — Small High-Emissive Flames > 1.8)
+    // 9. Eight Small, Realistic Clay Diyas Evenly Spaced Along the Outer Perimeter Ring of the Floor Rangoli (No Mushroom Stools!)
     interface DiyaNode {
       id: string;
       x: number;
@@ -1803,35 +1958,42 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       unlitRingMesh: THREE.Mesh;
     }
     const diyaNodes: DiyaNode[] = [];
-    const diyaCoords = [
-      { x: -7.5, z: -7.5 },
-      { x: 7.5, z: -7.5 },
-      { x: -9.5, z: 2.5 },
-      { x: 9.5, z: 2.5 },
-      { x: -6.5, z: 10.5 },
-      { x: 6.5, z: 10.5 },
-    ];
+    const RANGOLI_DIYA_COUNT = 8;
+    const RANGOLI_DIYA_RADIUS = 4.95;
+    const diyaCoords = Array.from({ length: RANGOLI_DIYA_COUNT }, (_, idx) => {
+      const angle = (idx / RANGOLI_DIYA_COUNT) * Math.PI * 2;
+      return {
+        x: Math.cos(angle) * RANGOLI_DIYA_RADIUS,
+        z: Math.sin(angle) * RANGOLI_DIYA_RADIUS,
+      };
+    });
 
-    const flameGeo = new THREE.ConeGeometry(0.28, 0.76, 10);
+    const clayDiyaMat = new THREE.MeshStandardMaterial({
+      color: 0x9a4422,
+      roughness: 0.82,
+      metalness: 0.05,
+    });
+    const diyaBowlGeo = new THREE.CylinderGeometry(0.24, 0.15, 0.09, 14);
+    const flameGeo = new THREE.ConeGeometry(0.085, 0.24, 8);
     const flameMat = new THREE.MeshStandardMaterial({
-      color: 0xfef08a,
+      color: 0xfffbeb,
       emissive: 0xf59e0b,
-      emissiveIntensity: 2.2,
+      emissiveIntensity: 1.95,
       roughness: 0.15,
     });
-    const haloGeo = new THREE.SphereGeometry(0.55, 12, 12);
+    const haloGeo = new THREE.SphereGeometry(0.18, 10, 10);
     const haloMat = new THREE.MeshBasicMaterial({
       color: 0xf59e0b,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.28,
       depthWrite: false,
     });
-    const unlitRingGeo = new THREE.RingGeometry(0.65, 0.82, 20);
+    const unlitRingGeo = new THREE.RingGeometry(0.28, 0.36, 18);
     unlitRingGeo.rotateX(-Math.PI / 2);
     const unlitRingMat = new THREE.MeshBasicMaterial({
       color: 0xf59e0b,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.45,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -1840,33 +2002,25 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       const dGroup = new THREE.Group();
       dGroup.position.set(coord.x, 0, coord.z);
 
-      const ped = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.38, 0.52, 1.15, 10),
-        sandstoneCarvedMat
-      );
-      ped.position.y = 0.575;
-      ped.castShadow = true;
-      dGroup.add(ped);
-
-      const bowl = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.55, 0.25, 0.28, 14),
-        brassTrimMat
-      );
-      bowl.position.y = 1.25;
+      const bowl = new THREE.Mesh(diyaBowlGeo, clayDiyaMat);
+      bowl.position.y = 0.045;
+      bowl.castShadow = true;
+      bowl.receiveShadow = true;
       dGroup.add(bowl);
 
       const flame = new THREE.Mesh(flameGeo, flameMat);
-      flame.position.y = 1.62;
-      flame.visible = false;
+      flame.position.y = 0.19;
+      flame.visible = true; // Lit warm clay wick in preview; resetRoundState() sets unlit for active gameplay
       dGroup.add(flame);
 
       const halo = new THREE.Mesh(haloGeo, haloMat);
-      halo.position.y = 1.62;
-      halo.visible = false;
+      halo.position.y = 0.19;
+      halo.visible = true;
       dGroup.add(halo);
 
       const unlitRing = new THREE.Mesh(unlitRingGeo, unlitRingMat);
-      unlitRing.position.y = 0.03;
+      unlitRing.position.y = 0.022;
+      unlitRing.visible = false;
       dGroup.add(unlitRing);
 
       scene.add(dGroup);
@@ -1881,7 +2035,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       });
     });
 
-    // 9B. Three Floating 3D Festival Blessing Shrines
+    // 9B. Festival Blessing Nodes (Hidden from floor to eliminate stray glowing sphere clutter)
     interface BlessingNode {
       id: 'petal_aura' | 'gujiya_heal' | 'matki_burst';
       label: string;
@@ -1924,24 +2078,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     const blessingNodes: BlessingNode[] = blessingConfigs.map((cfg) => {
       const bGroup = new THREE.Group();
       bGroup.position.set(cfg.x, 0.9, cfg.z);
-
-      const orbGeo = new THREE.OctahedronGeometry(0.45, 1);
-      const orbMat = new THREE.MeshStandardMaterial({
-        color: cfg.color,
-        emissive: cfg.color,
-        emissiveIntensity: 0.35,
-        roughness: 0.35,
-        metalness: 0.4,
-      });
-      const orb = new THREE.Mesh(orbGeo, orbMat);
-      bGroup.add(orb);
-
-      const haloRingGeo = new THREE.TorusGeometry(0.68, 0.05, 8, 24);
-      haloRingGeo.rotateX(Math.PI / 2);
-      const haloRing = new THREE.Mesh(haloRingGeo, brassTrimMat);
-      bGroup.add(haloRing);
-
-      scene.add(bGroup);
+      bGroup.visible = false;
       return {
         id: cfg.id,
         label: cfg.label,
@@ -2792,7 +2929,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     };
     let revelersSplashed = 0;
     const targetRevelers = 12; // 3 Waves of 4 Challengers
-    const targetDiyas = 6; // All 6 Sacred Brass Diyas around the courtyard
+    const targetDiyas = 8; // All 8 Perimeter Clay Diyas around the Rangoli Mandala
     let lastWaveAnnounced = 1;
     let roundElapsedSec = 0;
     let roundEnded = false;
@@ -3745,26 +3882,30 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       shieldRimMat.color.set(activeShieldSkin.rimHex);
       shieldRimMat.emissive.set(activeShieldSkin.rimHex);
 
-      // Luminous balanced atmosphere per world (calibrated for ACESFilmic 0.85 exposure)
+      // Luminous balanced atmosphere per world (calibrated for ACESFilmic 0.90 exposure)
       const targetSkyHex =
         currentProps.activeWorld === 'diwali_ghat'
-          ? 0x0f172a
+          ? 0x090c1c
           : currentProps.activeWorld === 'mela_central'
-          ? 0x1a103c
-          : 0x241023;
+          ? 0x0b0818
+          : 0x150c20;
       _dummyColor.setHex(targetSkyHex);
       (scene.background as THREE.Color).lerp(_dummyColor, 1 - Math.exp(-3 * dt));
       (scene.fog as THREE.FogExp2).color.copy(scene.background as THREE.Color);
       keyLight.intensity = THREE.MathUtils.damp(
         keyLight.intensity,
-        currentProps.activeWorld === 'diwali_ghat' ? 1.55 : 2.15,
+        currentProps.activeWorld === 'diwali_ghat' ? 1.55 : 1.95,
         4,
         dt
       );
 
-      // Animate overhead kites above Carnival Ride Grounds, Waving Temple Dhwaja Flag, Twinkling Stars & Rising Sky Lanterns
+      // Keep diamond kites ONLY in daytime/sunset World 01: Holi — Braj (clean night sky in Mela Central Hub & Diwali Ghat)
+      skyDecorGroup.visible = currentProps.activeWorld === 'holi_braj';
+
       const isMenuPreview = currentProps.gameState === 'title';
-      crowdJoyInstanced.visible = !isMenuPreview;
+      crowdBodyInstanced.visible = false;
+      crowdHeadInstanced.visible = false;
+      crowdJoyInstanced.visible = false;
 
       dhwajaPivot.rotation.y =
         Math.sin(elapsedTotal * 4.2) * 0.28 + Math.cos(elapsedTotal * 7.1) * 0.08;
@@ -3784,16 +3925,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       for (let l = 0; l < SKY_LANTERN_COUNT; l++) {
         const ls = skyLanternStates[l];
         ls.y += ls.riseSpeed * dt;
-        if (ls.y > 42) {
-          ls.y = 5.5;
+        if (ls.y > 52) {
+          ls.y = 28.5;
         }
-        const lx = ls.baseX + Math.sin(elapsedTotal * 0.65 + ls.phase) * 1.45;
-        const lz = ls.baseZ + Math.cos(elapsedTotal * 0.55 + ls.phase) * 1.45;
+        const lx = ls.baseX + Math.sin(elapsedTotal * 0.55 + ls.phase) * 1.35;
+        const lz = ls.baseZ + Math.cos(elapsedTotal * 0.48 + ls.phase) * 1.35;
         _dummyObj.position.set(lx, ls.y, lz);
         _dummyObj.rotation.set(
-          Math.sin(elapsedTotal * 1.4 + ls.phase) * 0.08,
-          elapsedTotal * 0.4 + ls.phase,
-          Math.cos(elapsedTotal * 1.2 + ls.phase) * 0.08
+          Math.sin(elapsedTotal * 1.4 + ls.phase) * 0.06,
+          elapsedTotal * 0.35 + ls.phase,
+          Math.cos(elapsedTotal * 1.2 + ls.phase) * 0.06
         );
         _dummyObj.scale.setScalar(1);
         _dummyObj.updateMatrix();
@@ -3801,11 +3942,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       }
       skyLanternInstanced.instanceMatrix.needsUpdate = true;
 
-      kiteMeshes.forEach((k) => {
-        k.mesh.position.y =
-          k.basePos.y + Math.sin(elapsedTotal * 1.8 + k.phase) * 0.65;
-        k.mesh.rotation.z = Math.sin(elapsedTotal * 2.2 + k.phase) * 0.22;
-      });
+      if (skyDecorGroup.visible) {
+        kiteMeshes.forEach((k) => {
+          k.mesh.position.y =
+            k.basePos.y + Math.sin(elapsedTotal * 1.8 + k.phase) * 0.65;
+          k.mesh.rotation.z = Math.sin(elapsedTotal * 2.2 + k.phase) * 0.22;
+        });
+      }
 
       const adaptiveProfile = evaluateAdaptiveDifficulty(
         recentAttackOutcomes,
@@ -3821,7 +3964,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         n.built.bodyGroup.position.y = Math.abs(Math.sin(beat)) * 0.08;
         n.built.bodyGroup.rotation.z = Math.sin(beat * 0.5) * 0.06;
         if (n.npc.id === 'ustad_kabir') {
-          // Ustad Kabir vigorously plays the Braj Dhol
           n.built.leftArm.rotation.x = -0.6 + Math.sin(beat * 2) * 0.45;
           n.built.rightArm.rotation.x = -0.6 - Math.sin(beat * 2) * 0.45;
         } else {
@@ -3831,7 +3973,10 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       });
 
       diyaNodes.forEach((d, idx) => {
-        if (d.lit) {
+        const showLitInPreview = isMenuPreview || d.lit;
+        d.flameMesh.visible = showLitInPreview;
+        d.haloMesh.visible = showLitInPreview;
+        if (showLitInPreview) {
           d.unlitRingMesh.visible = false;
           const flicker = 0.9 + Math.sin(elapsedTotal * 14 + idx * 2.1) * 0.14;
           d.flameMesh.scale.set(1, flicker, 1);
@@ -3870,17 +4015,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         }
       }
 
-      blessingNodes.forEach((b, idx) => {
-        if (b.cooldown > 0) {
-          b.cooldown = Math.max(0, b.cooldown - dt);
-          if (b.cooldown <= 0) {
-            b.group.visible = true;
-            spawnParticleBurst(b.x, 1.0, b.z, 0xfbbf24, 10, 4.0);
-          }
-        } else {
-          b.group.position.y = 0.95 + Math.sin(elapsedTotal * 2.8 + idx) * 0.22;
-          b.group.rotation.y = elapsedTotal * 1.6 + idx;
-        }
+      blessingNodes.forEach((b) => {
+        b.group.visible = false;
       });
 
       // Animate pooled particles
@@ -3912,19 +4048,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         particleInstanced.instanceMatrix.needsUpdate = true;
       }
 
-      if (Math.random() < 0.4) {
-        const gColors = [0xf43f5e, 0xf59e0b, 0x38bdf8, 0xa855f7];
-        spawnParticleBurst(
-          (Math.random() - 0.5) * 24,
-          3.5 + Math.random() * 5,
-          (Math.random() - 0.5) * 24,
-          gColors[Math.floor(Math.random() * gColors.length)],
-          1,
-          1.4
-        );
-      }
-
       // STATE 1: CINEMATIC LANDING MENU ORBITAL PREVIEW (`gameState === 'title'`)
+      // Offset camera lookAt so the 3D focal point (Temple + Rangoli + Giant Wheel) sits cleanly in the right 65% of the viewport
       if (currentProps.gameState === 'title') {
         compassGroup.visible = false;
         lockReticleGroup.visible = false;
@@ -3939,34 +4064,33 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           node.telegraphLane.visible = false;
         }
 
-        const orbitAngle = elapsedTotal * 0.22;
+        const orbitAngle = elapsedTotal * 0.14;
         if (currentProps.activeWorld === 'diwali_ghat') {
           _camTargetPos.set(
-            Math.sin(orbitAngle) * 14.5,
-            5.8 + Math.sin(elapsedTotal * 0.4) * 0.5,
-            10.5 + Math.cos(orbitAngle) * 6.5
+            -3.5 + Math.sin(orbitAngle) * 3.5,
+            7.2 + Math.sin(elapsedTotal * 0.35) * 0.35,
+            16.5 + Math.cos(orbitAngle) * 2.2
           );
-          _camLookAt.set(0, 1.8, 16.5);
+          _camLookAt.set(4.5, 3.6, -12.5);
         } else if (currentProps.activeWorld === 'mela_central') {
-          // Wide panoramic orbital vista showcasing the Central Sanctum, East Carnival Ride Grounds & West Meena Bazaar
+          // Frame Temple + Floor Rangoli (center-right) + East Ride Deck & Giant Wheel (far-right) in the right 65% of the viewport
           _camTargetPos.set(
-            Math.sin(orbitAngle) * 16.5,
-            8.4 + Math.sin(elapsedTotal * 0.35) * 0.65,
-            16.5 + Math.cos(orbitAngle) * 7.5
+            -4.8 + Math.sin(orbitAngle) * 3.2,
+            7.6 + Math.sin(elapsedTotal * 0.35) * 0.4,
+            17.5 + Math.cos(orbitAngle) * 2.2
           );
           _camLookAt.set(
-            Math.sin(orbitAngle * 0.65) * 14.0,
-            5.2,
+            6.2 + Math.sin(orbitAngle * 0.5) * 1.8,
+            4.6,
             -16.5
           );
         } else {
-          const camRad = 13.8;
           _camTargetPos.set(
-            Math.sin(orbitAngle) * camRad,
-            6.5 + Math.sin(elapsedTotal * 0.45) * 0.55,
-            Math.cos(orbitAngle) * camRad
+            -3.8 + Math.sin(orbitAngle) * 3.2,
+            7.0 + Math.sin(elapsedTotal * 0.4) * 0.35,
+            16.2 + Math.cos(orbitAngle) * 2.2
           );
-          _camLookAt.set(0, 3.2, -6.5);
+          _camLookAt.set(4.2, 4.0, -14.5);
         }
         camera.up.set(0, 1, 0);
         camera.position.lerp(_camTargetPos, 1 - Math.exp(-4.5 * dt));
@@ -5208,6 +5332,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       crowdHeadMat.dispose();
       crowdJoyGaugeGeo.dispose();
       crowdJoyGaugeMat.dispose();
+      msaaRenderTarget.dispose();
       composer.dispose();
       renderer.dispose();
     };

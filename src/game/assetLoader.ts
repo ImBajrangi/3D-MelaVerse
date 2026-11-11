@@ -65,29 +65,32 @@ export function loadMelaAssetsWithManager(
 
     const maxAnisotropy = renderer
       ? renderer.capabilities.getMaxAnisotropy()
-      : 4;
+      : 8;
 
-    // 1. Terracotta Courtyard Brick Texture
+    // 1. High-Res 1024x1024 Deep Royal Slate & Basalt Cobblestone Texture
     const createBrickTexture = (): THREE.CanvasTexture => {
       const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
+      canvas.width = 1024;
+      canvas.height = 1024;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.fillStyle = '#B85A3A';
-        ctx.fillRect(0, 0, 256, 256);
-        const rows = 8;
-        const cols = 4;
-        const rowH = 256 / rows;
-        const colW = 256 / cols;
+        ctx.fillStyle = '#1e1b24';
+        ctx.fillRect(0, 0, 1024, 1024);
+        const rows = 16;
+        const cols = 8;
+        const rowH = 1024 / rows;
+        const colW = 1024 / cols;
         for (let r = 0; r < rows; r++) {
           const offset = (r % 2) * (colW * 0.5);
           for (let c = -1; c <= cols; c++) {
             const x = c * colW + offset;
             const y = r * rowH;
-            const shade = ((r * 7 + c * 13) % 18) - 9;
-            ctx.fillStyle = `rgb(${198 + shade}, ${96 + shade}, ${62 + shade})`;
-            ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+            const delta = ((r * 7 + c * 13) % 10) - 5;
+            ctx.fillStyle = `rgb(${45 + delta}, ${38 + delta}, ${51 + delta})`;
+            ctx.fillRect(x + 3, y + 3, colW - 6, rowH - 6);
+            ctx.strokeStyle = '#3d3142';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x + 2, y + 2, colW - 4, rowH - 4);
           }
         }
       }
@@ -95,51 +98,57 @@ export function loadMelaAssetsWithManager(
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(22, 22);
+      tex.repeat.set(24, 24);
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.generateMipmaps = true;
       tex.anisotropy = maxAnisotropy;
       return tex;
     };
 
-    // 2. Festival Canopy Silk Stripe Texture
+    // 2. High-Res 1024x1024 Festival Canopy Silk Texture
     const createCanopyStripeTexture = (): THREE.CanvasTexture => {
       const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
+      canvas.width = 1024;
+      canvas.height = 1024;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        const colors = ['#E11D48', '#F59E0B', '#FFFBEB', '#0284C7', '#A855F7', '#FFFBEB'];
-        const stripeW = 256 / colors.length;
+        const colors = ['#9e1b32', '#e86f1c', '#0f6b6e', '#9e1b32', '#e86f1c', '#0f6b6e'];
+        const stripeW = 1024 / colors.length;
         colors.forEach((hex, idx) => {
           ctx.fillStyle = hex;
-          ctx.fillRect(idx * stripeW, 0, stripeW + 1, 256);
+          ctx.fillRect(idx * stripeW, 0, stripeW + 2, 1024);
         });
-        // Gold zari border
-        ctx.fillStyle = '#FBBF24';
-        ctx.fillRect(0, 232, 256, 24);
+        // Crisp Gold Zari border trim
+        ctx.fillStyle = '#f5b841';
+        ctx.fillRect(0, 936, 1024, 88);
       }
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.generateMipmaps = true;
       tex.anisotropy = maxAnisotropy;
       return tex;
     };
 
-    // 3. Carved Teak Wood Grain Texture
+    // 3. High-Res 1024x1024 Carved Teak Wood Grain Texture
     const createWoodTexture = (): THREE.CanvasTexture => {
       const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 128;
+      canvas.width = 1024;
+      canvas.height = 1024;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.fillStyle = '#5C2D16';
-        ctx.fillRect(0, 0, 128, 128);
-        ctx.strokeStyle = '#431E0D';
-        ctx.lineWidth = 2;
-        for (let i = 0; i < 24; i++) {
+        ctx.fillStyle = '#4a2512';
+        ctx.fillRect(0, 0, 1024, 1024);
+        ctx.strokeStyle = '#36190a';
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 48; i++) {
           ctx.beginPath();
-          ctx.moveTo(0, i * 5.5);
-          ctx.bezierCurveTo(42, i * 5.5 + 3, 86, i * 5.5 - 3, 128, i * 5.5);
+          ctx.moveTo(0, i * 21.5);
+          ctx.bezierCurveTo(340, i * 21.5 + 10, 680, i * 21.5 - 10, 1024, i * 21.5);
           ctx.stroke();
         }
       }
@@ -147,6 +156,9 @@ export function loadMelaAssetsWithManager(
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.RepeatWrapping;
       tex.wrapT = THREE.RepeatWrapping;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.generateMipmaps = true;
       tex.anisotropy = maxAnisotropy;
       return tex;
     };

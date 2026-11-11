@@ -56,17 +56,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-20 flex flex-col justify-between p-6 md:p-12 pointer-events-none"
+      className="fixed inset-0 z-20 flex flex-col justify-between p-8 bg-gradient-to-r from-black/80 via-black/40 to-transparent pointer-events-none"
       data-testid="landing-menu-overlay"
-      style={{
-        background:
-          'linear-gradient(90deg, rgba(14, 7, 5, 0.82) 0%, rgba(14, 7, 5, 0.42) 38%, rgba(14, 7, 5, 0.0) 58%, rgba(14, 7, 5, 0.0) 100%)',
-      }}
     >
-      {/* Top-Left World Stage Switcher (Interactive 3D Live Orbital World Preview) */}
+      {/* Top-Left World Stage Switcher (Aligned to 32px / p-8 outer screen margin grid) */}
       <div className="flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
         <div
-          className="inline-flex items-center gap-1 p-1.5 rounded-xl border border-white/15 bg-black/70"
+          className="inline-flex items-center gap-1 p-1.5 rounded-xl border border-white/15 bg-black/75 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.65)]"
           role="group"
           aria-label="Live 3D Stage Destination Preview"
         >
@@ -109,12 +105,12 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* Asymmetric Left-Third Title Lockup & <= 3 Menu Actions over Live Orbital 3D Preview */}
-      <div className="my-auto max-w-xl pointer-events-auto">
-        <div className="mb-4">
+      {/* Left 35% Editorial Column: Title Lockup, Subtle Brief & CTA Buttons (Right 65% Unobstructed 3D Focal Vista) */}
+      <div className="my-auto w-full max-w-[520px] pointer-events-auto">
+        <div className="mb-3">
           <svg
             viewBox="0 0 580 165"
-            className="w-full max-w-[540px] h-auto drop-shadow-[0_6px_18px_rgba(0,0,0,0.85)]"
+            className="w-full max-w-[460px] h-auto drop-shadow-[0_6px_18px_rgba(0,0,0,0.9)]"
             role="img"
             aria-label="MELAVERSE — Celebrate Traditions. Explore India. Create Memories."
           >
@@ -122,14 +118,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <path
               d="M20 36 L155 36 L175 18 L195 36 L345 36 L365 18 L385 36 L520 36"
               fill="none"
-              stroke="#F59E0B"
+              stroke="#F5B841"
               strokeWidth="2.5"
               strokeOpacity="0.85"
             />
             {/* Central Mandir Kalash & Lotus Crest */}
             <path
               d="M270 4 L282 20 L270 32 L258 20 Z"
-              fill="#F59E0B"
+              fill="#F5B841"
               stroke="#FFFBEB"
               strokeWidth="1.5"
             />
@@ -145,7 +141,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               fontWeight="800"
               letterSpacing="5"
               fill="#FFFBEB"
-              stroke="#2A110D"
+              stroke="#140C1C"
               strokeWidth="6"
               style={{ paintOrder: 'stroke fill' }}
             >
@@ -154,7 +150,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
             {/* Sindoor & Haldi Rule */}
             <path d="M22 118 L355 118" stroke="#E11D48" strokeWidth="3.5" />
-            <path d="M363 118 L520 118" stroke="#F59E0B" strokeWidth="3.5" />
+            <path d="M363 118 L520 118" stroke="#F5B841" strokeWidth="3.5" />
 
             {/* Cultural Tagline */}
             <text
@@ -171,21 +167,21 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           </svg>
         </div>
 
-        {/* Selected World Preview Brief */}
-        <div className="mb-5 px-4 py-3 rounded-xl bg-black/65 border border-white/15 max-w-lg">
-          <div className="text-[11px] font-mono font-bold tracking-wider text-[#FBBF24] uppercase mb-0.5">
+        {/* Clean Editorial World Preview Caption (100% Contrast via Left Gradient Backdrop without Heavy Boxes) */}
+        <div className="mb-5 pl-3.5 border-l-2 border-[#F5B841]/80">
+          <div className="text-[11px] font-mono font-bold tracking-wider text-[#F5B841] uppercase mb-0.5">
             {worldDetail.badge} · ORBITAL 3D PREVIEW
           </div>
-          <div className="text-xs font-semibold text-[#FFFBEB] mb-1">
+          <div className="text-sm font-semibold text-white mb-1 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
             {worldDetail.subtitle}
           </div>
-          <div className="text-[11px] font-mono text-[#FDE68A]/85">
+          <div className="text-[11px] font-mono text-[#FDE68A]/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]">
             {worldDetail.highlights}
           </div>
         </div>
 
         {/* Primary & Secondary CTA Buttons */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 mt-4">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
           <button
             type="button"
             data-start="true"
@@ -206,7 +202,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               e.currentTarget.blur();
               onOpenCharacterModal();
             }}
-            className="touch-target-action px-4 py-3.5 rounded-lg bg-black/75 hover:bg-[#3A1B15] text-[#FFFBEB] font-medium text-sm border border-[#F59E0B]/45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="touch-target-action px-4 py-3.5 rounded-lg bg-black/75 hover:bg-white/15 text-[#FFFBEB] font-medium text-sm border border-[#F5B841]/45 backdrop-blur-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Character &amp; Attire
           </button>
@@ -218,18 +214,18 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
               e.currentTarget.blur();
               onOpenBlueprintModal();
             }}
-            className="touch-target-action px-4 py-3.5 rounded-lg bg-black/75 hover:bg-[#2D1E40] text-[#FDE68A] font-medium text-sm border border-[#F59E0B]/45 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="touch-target-action px-4 py-3.5 rounded-lg bg-black/75 hover:bg-white/15 text-[#FDE68A] font-medium text-sm border border-[#F5B841]/45 backdrop-blur-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Studio Blueprint
           </button>
         </div>
       </div>
 
-      {/* Bottom Safe Margin: Sleek Compact Badge in Orbital Preview Mode */}
+      {/* Bottom Safe Margin (Aligned to 32px / p-8 outer screen margin grid) */}
       <div className="pt-2 flex items-center">
         <div
           data-testid="orbital-controls-badge"
-          className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/65 border border-white/15 text-[11px] font-mono text-[#FDE68A]/90 shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/75 border border-white/15 text-[11px] font-mono text-[#FDE68A]/95 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.75)]"
         >
           <span className="w-2 h-2 rounded-full bg-[#10B981]" />
           <span>
@@ -240,3 +236,4 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
     </div>
   );
 };
+

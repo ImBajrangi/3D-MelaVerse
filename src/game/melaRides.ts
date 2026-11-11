@@ -370,127 +370,234 @@ export function buildMelaRidesAndStalls(
   rootGroup.add(boatAnchor);
 
   // =========================================================================
-  // 4. PLAYABLE MINI-GAME STALLS (Balloon Shoot, Ring Toss, Prize Shop)
+  // 4. OPEN, AIRY INDIAN BAZAAR PAVILIONS (See-through silhouettes, zero boxy walls)
   // =========================================================================
   const balloonStallTargets: THREE.Mesh[] = [];
-  const stallBalloonGeo = trackGeo(new THREE.SphereGeometry(0.28, 12, 12));
+  const stallBalloonGeo = trackGeo(new THREE.SphereGeometry(0.22, 12, 12));
 
-  MELA_STALLS.forEach((stall, idx) => {
-    const stallGroup = new THREE.Group();
-    stallGroup.position.set(stall.x, 0, stall.z);
-    // Face inward toward courtyard center
-    stallGroup.rotation.y = Math.atan2(-stall.x, -stall.z);
+  const canopyCrimsonMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x9e1b32,
+      roughness: 0.65,
+      metalness: 0.08,
+      emissiveIntensity: 0,
+    })
+  );
+  const canopySaffronMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xe86f1c,
+      roughness: 0.65,
+      metalness: 0.08,
+      emissiveIntensity: 0,
+    })
+  );
+  const canopyTealMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x0f6b6e,
+      roughness: 0.65,
+      metalness: 0.08,
+      emissiveIntensity: 0,
+    })
+  );
+  const goldTrimMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xf5b841,
+      roughness: 0.32,
+      metalness: 0.72,
+      emissiveIntensity: 0,
+    })
+  );
+  const carvedWoodPillarMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x6b3e26,
+      map: woodGrainTex,
+      roughness: 0.68,
+      metalness: 0.08,
+      emissiveIntensity: 0,
+    })
+  );
 
-    // Counter table
-    const counter = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(4.8, 1.2, 2.4)),
-      teakWoodMat
+  const canopyPalette = [canopyCrimsonMat, canopySaffronMat, canopyTealMat];
+  const slenderPillarGeo = trackGeo(
+    new THREE.CylinderGeometry(0.12, 0.12, 3.4, 12)
+  );
+  const pillarCapitalGeo = trackGeo(
+    new THREE.CylinderGeometry(0.2, 0.14, 0.22, 12)
+  );
+  const scallopValanceGeo = trackGeo(new THREE.CylinderGeometry(0.22, 0.22, 0.24, 12));
+  const innerLanternGeo = trackGeo(new THREE.CylinderGeometry(0.14, 0.1, 0.32, 8));
+
+  const buildOpenBazaarPavilion = (
+    px: number,
+    pz: number,
+    rotY: number,
+    colorIndex: number,
+    stallId?: string
+  ) => {
+    const pavGroup = new THREE.Group();
+    pavGroup.position.set(px, 0, pz);
+    pavGroup.rotation.y = rotY;
+
+    const roofMat = canopyPalette[colorIndex % canopyPalette.length];
+
+    // Open counter table (height: 1.1m — completely open above counter so sightlines pass right through)
+    const counterBase = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(4.2, 1.0, 1.35)),
+      carvedWoodPillarMat
     );
-    counter.position.y = 0.6;
-    counter.castShadow = true;
-    counter.receiveShadow = true;
-    stallGroup.add(counter);
+    counterBase.position.set(0, 0.5, 0);
+    counterBase.castShadow = true;
+    counterBase.receiveShadow = true;
+    pavGroup.add(counterBase);
 
-    // 4 Corner brass poles
-    const cornerPoleGeo = trackGeo(new THREE.CylinderGeometry(0.09, 0.09, 3.6, 8));
-    [-2.2, 2.2].forEach((px) => {
-      [-1.0, 1.0].forEach((pz) => {
-        const pole = new THREE.Mesh(cornerPoleGeo, brassMat);
-        pole.position.set(px, 1.8, pz);
-        stallGroup.add(pole);
+    const counterTop = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(4.4, 0.1, 1.5)),
+      goldTrimMat
+    );
+    counterTop.position.set(0, 1.05, 0);
+    counterTop.receiveShadow = true;
+    pavGroup.add(counterTop);
+
+    // 4 Slender Carved Wooden Corner Pillars (radius: 0.12)
+    [-2.0, 2.0].forEach((cx) => {
+      [-1.05, 1.05].forEach((cz) => {
+        const pillar = new THREE.Mesh(slenderPillarGeo, carvedWoodPillarMat);
+        pillar.position.set(cx, 1.7, cz);
+        pillar.castShadow = true;
+        pavGroup.add(pillar);
+
+        const cap = new THREE.Mesh(pillarCapitalGeo, goldTrimMat);
+        cap.position.set(cx, 3.32, cz);
+        pavGroup.add(cap);
       });
     });
 
-    // Striped pitched canopy roof
-    const roof = new THREE.Mesh(
-      trackGeo(new THREE.ConeGeometry(3.6, 1.5, 4)),
-      canopySilkMat
+    // Scalloped Fabric Canopy Roof with Gold Trim (zero emissive bloom on roof)
+    const canopyMain = new THREE.Mesh(
+      trackGeo(new THREE.ConeGeometry(3.25, 1.15, 4)),
+      roofMat
     );
-    roof.position.y = 4.25;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    stallGroup.add(roof);
+    canopyMain.position.y = 3.98;
+    canopyMain.rotation.y = Math.PI / 4;
+    canopyMain.castShadow = true;
+    pavGroup.add(canopyMain);
 
-    // Glowing Neon Marquee Signboard on roof front
-    const signBulbMat =
-      idx === 0 ? neonMagentaMat : idx === 1 ? neonCyanMat : neonAmberMat;
-    const marquee = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(3.8, 0.48, 0.18)),
-      signBulbMat
+    const goldEaveTrim = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(4.55, 0.1, 2.55)),
+      goldTrimMat
     );
-    marquee.position.set(0, 3.45, 1.15);
-    enableBloom(marquee);
-    stallGroup.add(marquee);
+    goldEaveTrim.position.y = 3.42;
+    pavGroup.add(goldEaveTrim);
 
-    // Stall-specific 3D interior props
-    if (stall.id === 'balloon_shoot') {
-      const backboard = new THREE.Mesh(
-        trackGeo(new THREE.BoxGeometry(4.2, 2.0, 0.18)),
-        royalBlueMat
+    // Scalloped fabric valance border along front & back eaves
+    for (let s = -4; s <= 4; s++) {
+      const scallopFront = new THREE.Mesh(
+        scallopValanceGeo,
+        s % 2 === 0 ? roofMat : goldTrimMat
       );
-      backboard.position.set(0, 2.2, -0.85);
-      stallGroup.add(backboard);
+      scallopFront.position.set(s * 0.48, 3.3, 1.24);
+      scallopFront.rotation.x = Math.PI / 2;
+      pavGroup.add(scallopFront);
+    }
+
+    // Warm Inner Hanging Lantern Core (small point source under canopy)
+    const innerLantern = new THREE.Mesh(innerLanternGeo, neonAmberMat);
+    innerLantern.position.set(0, 3.05, 0);
+    enableBloom(innerLantern);
+    pavGroup.add(innerLantern);
+
+    // Subtle open-frame stall props (never blocking sightlines)
+    if (stallId === 'balloon_shoot') {
+      const frameBar = new THREE.Mesh(
+        trackGeo(new THREE.CylinderGeometry(0.03, 0.03, 3.6, 8)),
+        goldTrimMat
+      );
+      frameBar.rotation.z = Math.PI / 2;
+      frameBar.position.set(0, 2.15, -0.45);
+      pavGroup.add(frameBar);
 
       for (let b = 0; b < 6; b++) {
-        const bMesh = new THREE.Mesh(
-          stallBalloonGeo,
-          b % 2 === 0 ? neonMagentaMat : neonAmberMat
+        const bMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: b % 3 === 0 ? 0x9e1b32 : b % 3 === 1 ? 0xe86f1c : 0x0f6b6e,
+            roughness: 0.35,
+            metalness: 0.1,
+            emissiveIntensity: 0.08,
+          })
         );
-        bMesh.position.set(-1.5 + b * 0.6, 2.1 + (b % 2) * 0.45, -0.65);
-        enableBloom(bMesh);
+        const bMesh = new THREE.Mesh(stallBalloonGeo, bMat);
+        bMesh.position.set(-1.5 + b * 0.6, 2.0 + (b % 2) * 0.35, -0.45);
         balloonStallTargets.push(bMesh);
-        stallGroup.add(bMesh);
+        pavGroup.add(bMesh);
       }
-    } else if (stall.id === 'ring_toss') {
-      const pegGeo = trackGeo(new THREE.CylinderGeometry(0.08, 0.12, 0.55, 10));
+    } else if (stallId === 'ring_toss') {
+      const pegGeo = trackGeo(new THREE.CylinderGeometry(0.06, 0.09, 0.42, 10));
       for (let p = 0; p < 5; p++) {
-        const peg = new THREE.Mesh(pegGeo, neonCyanMat);
-        peg.position.set(-1.2 + p * 0.6, 1.48, 0);
-        enableBloom(peg);
-        stallGroup.add(peg);
+        const peg = new THREE.Mesh(pegGeo, goldTrimMat);
+        peg.position.set(-1.1 + p * 0.55, 1.31, 0);
+        pavGroup.add(peg);
       }
-    } else if (stall.id === 'prize_shop') {
-      const trophyGeo = trackGeo(new THREE.OctahedronGeometry(0.32, 0));
+    } else if (stallId === 'prize_shop') {
+      const kalashGeo = trackGeo(new THREE.SphereGeometry(0.18, 12, 10));
       for (let t = 0; t < 4; t++) {
-        const trophy = new THREE.Mesh(trophyGeo, neonAmberMat);
-        trophy.position.set(-1.2 + t * 0.8, 1.65, -0.2);
-        enableBloom(trophy);
-        stallGroup.add(trophy);
+        const trophy = new THREE.Mesh(kalashGeo, goldTrimMat);
+        trophy.position.set(-1.05 + t * 0.7, 1.28, 0);
+        pavGroup.add(trophy);
       }
     }
 
-    rootGroup.add(stallGroup);
+    rootGroup.add(pavGroup);
+  };
+
+  // Build the 3 Interactive Mini-Game Bazaar Pavilions on the West/Left Bazaar Avenue
+  MELA_STALLS.forEach((stall, idx) => {
+    buildOpenBazaarPavilion(
+      stall.x,
+      stall.z,
+      Math.atan2(-stall.x, -stall.z),
+      idx,
+      stall.id
+    );
   });
 
+  // 2 Additional Open Airy Artisan Pavilions flanking the West Bazaar curve (never blocking the East Ride Deck!)
+  buildOpenBazaarPavilion(-22, -16, Math.PI / 3, 0);
+  buildOpenBazaarPavilion(-22, 6, (Math.PI * 2) / 3, 2);
+
   // =========================================================================
-  // 5. DECORATIVE BRICK PATHWAYS, FAIRY-LIGHT ARCHES & RIDE TICKET BOOTH
+  // 5. GOLDEN-SANDSTONE BORDER WALKWAYS & RAISED PAVED RIDE DECK WITH BRASS RAILINGS
   // =========================================================================
-  const brickPathMat = trackMat(
+  const sandstoneWalkwayMat = trackMat(
     new THREE.MeshStandardMaterial({
-      color: 0x7c2d12,
-      roughness: 0.78,
-      metalness: 0.08,
-      emissive: 0x451a03,
-      emissiveIntensity: 0.12,
+      color: 0x352b38,
+      roughness: 0.82,
+      metalness: 0.06,
+      emissiveIntensity: 0,
     })
   );
-  const pathBorderMat = trackMat(
+  const goldenSandstoneBorderMat = trackMat(
     new THREE.MeshStandardMaterial({
-      color: 0xd97706,
-      roughness: 0.45,
-      metalness: 0.45,
-      emissive: 0x78350f,
-      emissiveIntensity: 0.18,
+      color: 0xd49b6a,
+      roughness: 0.65,
+      metalness: 0.14,
+      emissiveIntensity: 0,
+    })
+  );
+  const ivoryGoldCurbMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xe8c391,
+      roughness: 0.55,
+      metalness: 0.22,
+      emissiveIntensity: 0,
     })
   );
 
-  // Helper to build a brick promenade & fairy-light arch corridor between two zones
-  const buildPromenadeCorridor = (
+  const buildGoldenSandstoneWalkway = (
     x1: number,
     z1: number,
     x2: number,
     z2: number,
-    archCount: number
+    width = 3.4
   ) => {
     const dx = x2 - x1;
     const dz = z2 - z1;
@@ -499,142 +606,91 @@ export function buildMelaRidesAndStalls(
     const midX = (x1 + x2) * 0.5;
     const midZ = (z1 + z2) * 0.5;
 
-    const walkway = new THREE.Mesh(
-      trackGeo(new THREE.BoxGeometry(3.8, 0.06, len)),
-      brickPathMat
+    // Subtle dark slate inner runner
+    const runner = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(width, 0.028, len)),
+      sandstoneWalkwayMat
     );
-    walkway.position.set(midX, 0.025, midZ);
-    walkway.rotation.y = angle;
-    walkway.receiveShadow = true;
-    rootGroup.add(walkway);
+    runner.position.set(midX, 0.014, midZ);
+    runner.rotation.y = angle;
+    runner.receiveShadow = true;
+    rootGroup.add(runner);
 
-    // Raised brass-sandstone curbs along both sides of the brick pathway
-    [-1.95, 1.95].forEach((sideX) => {
-      const curb = new THREE.Mesh(
-        trackGeo(new THREE.BoxGeometry(0.18, 0.12, len)),
-        pathBorderMat
+    // Clean golden-sandstone border strips along both edges
+    const halfW = width * 0.5 + 0.16;
+    [-halfW, halfW].forEach((sideX) => {
+      const border = new THREE.Mesh(
+        trackGeo(new THREE.BoxGeometry(0.28, 0.045, len)),
+        goldenSandstoneBorderMat
       );
-      curb.position.set(
+      border.position.set(
         midX + Math.cos(angle) * sideX,
-        0.06,
+        0.022,
         midZ - Math.sin(angle) * sideX
       );
-      curb.rotation.y = angle;
-      rootGroup.add(curb);
+      border.rotation.y = angle;
+      border.receiveShadow = true;
+      rootGroup.add(border);
     });
-
-    // Overhead Fairy-Light Arches along the pathway
-    const archPillarGeo = trackGeo(new THREE.CylinderGeometry(0.1, 0.12, 4.6, 8));
-    const archTopGeo = trackGeo(
-      new THREE.TorusGeometry(2.1, 0.08, 8, 20, Math.PI)
-    );
-    for (let a = 1; a <= archCount; a++) {
-      const t = a / (archCount + 1);
-      const ax = x1 + dx * t;
-      const az = z1 + dz * t;
-      const archGroup = new THREE.Group();
-      archGroup.position.set(ax, 0, az);
-      archGroup.rotation.y = angle;
-
-      [-2.1, 2.1].forEach((px) => {
-        const post = new THREE.Mesh(archPillarGeo, brassMat);
-        post.position.set(px, 2.3, 0);
-        archGroup.add(post);
-      });
-
-      const archSpan = new THREE.Mesh(archTopGeo, brassMat);
-      archSpan.position.set(0, 4.5, 0);
-      archGroup.add(archSpan);
-
-      // 5 Fairy-light bulbs along each arch crown
-      for (let b = -2; b <= 2; b++) {
-        const bAngle = Math.PI * 0.5 + b * 0.28;
-        const fBulb = new THREE.Mesh(
-          bulbGeo,
-          (a + b) % 2 === 0 ? neonAmberMat : neonMagentaMat
-        );
-        fBulb.position.set(
-          Math.cos(bAngle) * 2.1,
-          4.5 + Math.sin(bAngle) * 2.1,
-          0
-        );
-        enableBloom(fBulb);
-        archGroup.add(fBulb);
-      }
-
-      rootGroup.add(archGroup);
-    }
   };
 
-  // Connect Central Sanctum Plaza (0, 0) -> Carnival Ride Grounds (34, -22)
-  buildPromenadeCorridor(9, -6, 33, -21, 3);
-  // Connect Central Sanctum Plaza (0, 0) -> Meena Bazaar & Game Stalls (-31, -13)
-  buildPromenadeCorridor(-9, -4, -30, -12, 3);
+  // 1) Central Rangoli (0, 0) -> Temple Mandap (0, -16.5)
+  buildGoldenSandstoneWalkway(0, -5.2, 0, -16.5, 4.2);
+  // 2) Central Rangoli (0, 0) -> Raised Ride Deck on the Right (22, -16)
+  buildGoldenSandstoneWalkway(5.0, -2.5, 22.5, -15.5, 3.2);
+  // 3) Central Rangoli (0, 0) -> Open Bazaar Pavilions on the Left (-28, -11)
+  buildGoldenSandstoneWalkway(-5.0, -2.0, -28.0, -11.0, 3.2);
 
-  // Carnival Ticket Booth next to the Aakash Jhula Giant Wheel at (30, 0, -19)
-  const ticketBoothGroup = new THREE.Group();
-  ticketBoothGroup.position.set(30, 0, -19);
-  ticketBoothGroup.rotation.y = -0.65;
-  const boothBase = new THREE.Mesh(
-    trackGeo(new THREE.CylinderGeometry(1.6, 1.75, 2.6, 8)),
-    crimsonStructuralMat
+  // Raised Paved Ride Deck on the Right Side (x > 22) Framed by Clean Low Decorative Brass Railings
+  const rideDeckCenter = { x: 34.5, z: -20.5 };
+  const rideDeckRadius = 18.5;
+  const rideDeckMesh = new THREE.Mesh(
+    trackGeo(new THREE.CylinderGeometry(rideDeckRadius, rideDeckRadius + 0.45, 0.16, 48)),
+    sandstoneWalkwayMat
   );
-  boothBase.position.y = 1.3;
-  ticketBoothGroup.add(boothBase);
-  const boothRoof = new THREE.Mesh(
-    trackGeo(new THREE.ConeGeometry(2.1, 1.3, 8)),
-    brassMat
-  );
-  boothRoof.position.y = 3.25;
-  ticketBoothGroup.add(boothRoof);
-  const boothSign = new THREE.Mesh(
-    trackGeo(new THREE.BoxGeometry(2.2, 0.42, 0.16)),
-    neonAmberMat
-  );
-  boothSign.position.set(0, 2.55, 1.45);
-  enableBloom(boothSign);
-  ticketBoothGroup.add(boothSign);
-  rootGroup.add(ticketBoothGroup);
+  rideDeckMesh.position.set(rideDeckCenter.x, 0.08, rideDeckCenter.z);
+  rideDeckMesh.receiveShadow = true;
+  rootGroup.add(rideDeckMesh);
 
-  // Grand Plaza Circular Pavings under Carnival Ride Grounds (38, -25) & Meena Bazaar (-34, -12)
-  const ridePlazaDisc = new THREE.Mesh(
-    trackGeo(new THREE.CylinderGeometry(18.5, 19.0, 0.05, 36)),
-    brickPathMat
+  // Golden-sandstone outer coping rim around the raised Ride Deck
+  const rideDeckRim = new THREE.Mesh(
+    trackGeo(new THREE.TorusGeometry(rideDeckRadius, 0.18, 8, 64)),
+    ivoryGoldCurbMat
   );
-  ridePlazaDisc.position.set(35, 0.018, -21);
-  ridePlazaDisc.receiveShadow = true;
-  rootGroup.add(ridePlazaDisc);
+  rideDeckRim.rotation.x = Math.PI / 2;
+  rideDeckRim.position.set(rideDeckCenter.x, 0.16, rideDeckCenter.z);
+  rootGroup.add(rideDeckRim);
 
+  // Clean Low Decorative Brass Railings around the Ride Deck (leaving a wide entrance gap facing the walkway)
+  const railPostGeo = trackGeo(new THREE.CylinderGeometry(0.055, 0.065, 0.82, 8));
+  const railFinialGeo = trackGeo(new THREE.SphereGeometry(0.085, 8, 8));
+  const railPostCount = 28;
+  for (let i = 0; i < railPostCount; i++) {
+    const angle = (i / railPostCount) * Math.PI * 2;
+    // Leave entrance opening on the West-Southwest side (angle around 2.4 to 3.1 rad)
+    const normAngle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    if (normAngle > 2.25 && normAngle < 3.05) continue;
+
+    const px = rideDeckCenter.x + Math.cos(angle) * (rideDeckRadius - 0.35);
+    const pz = rideDeckCenter.z + Math.sin(angle) * (rideDeckRadius - 0.35);
+
+    const post = new THREE.Mesh(railPostGeo, goldTrimMat);
+    post.position.set(px, 0.56, pz);
+    rootGroup.add(post);
+
+    const finial = new THREE.Mesh(railFinialGeo, brassMat);
+    finial.position.set(px, 1.0, pz);
+    rootGroup.add(finial);
+  }
+
+  // Subtle Bazaar Deck Disc on the West Side
   const bazaarPlazaDisc = new THREE.Mesh(
-    trackGeo(new THREE.CylinderGeometry(16.5, 17.0, 0.05, 36)),
-    brickPathMat
+    trackGeo(new THREE.CylinderGeometry(15.5, 15.8, 0.06, 36)),
+    sandstoneWalkwayMat
   );
-  bazaarPlazaDisc.position.set(-31, 0.018, -13);
+  bazaarPlazaDisc.position.set(-31, 0.03, -13);
   bazaarPlazaDisc.receiveShadow = true;
   rootGroup.add(bazaarPlazaDisc);
-
-  // Overhead Fairy Light Festoon Ring around Central Sanctum
-  const festoonBulbGeo = trackGeo(new THREE.SphereGeometry(0.14, 6, 6));
-  const festoonCount = 36;
-  for (let i = 0; i < festoonCount; i++) {
-    const angle = (i / festoonCount) * Math.PI * 2;
-    const r = 19.5;
-    const bulb = new THREE.Mesh(
-      festoonBulbGeo,
-      i % 3 === 0
-        ? neonAmberMat
-        : i % 3 === 1
-        ? neonMagentaMat
-        : neonCyanMat
-    );
-    bulb.position.set(
-      Math.cos(angle) * r,
-      6.2 + Math.sin(angle * 6) * 0.45,
-      Math.sin(angle) * r
-    );
-    enableBloom(bulb);
-    rootGroup.add(bulb);
-  }
 
   const updateKinematics = (elapsedSec: number) => {
     // 1. Giant Wheel smooth delta-time rotation + counter-rotating upright cabins

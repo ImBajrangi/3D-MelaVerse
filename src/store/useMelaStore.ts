@@ -24,47 +24,47 @@ export interface GraphicsQualityConfig {
 }
 
 /**
- * Calibrated Post-Processing Bloom Presets (ACESFilmicToneMapping @ exposure 0.85):
- * High threshold (0.88) and restrained strength (0.40) prevent white/yellow glare
- * on sandstone architecture while allowing small light sources (diya flames,
- * fairy bulbs, firework sparks, shield rims) with emissive > 1.2 to glow crisply.
+ * Calibrated Post-Processing Bloom Presets (ACESFilmicToneMapping @ exposure 0.90):
+ * High threshold (0.92) and restrained strength (0.28) prevent glare or blur
+ * on architecture, floor tiles, rangoli, and characters while allowing tiny point
+ * sources (lantern cores, diya wicks, fairy light bulbs) to glow crisply.
  */
 export const GRAPHICS_PRESETS: Record<GraphicsQualityPreset, GraphicsQualityConfig> = {
   low: {
     preset: 'low',
     label: 'Low (Battery / 60 FPS Mobile)',
-    maxPixelRatio: 1.0,
-    shadowMapSize: 512,
+    maxPixelRatio: 1.25,
+    shadowMapSize: 1024,
     shadowsEnabled: false,
     bloomEnabled: false,
     bloomStrength: 0,
     bloomRadius: 0,
     bloomThreshold: 0.95,
-    crowdCount: 28,
+    crowdCount: 16,
   },
   medium: {
     preset: 'medium',
     label: 'Medium (Balanced 60 FPS)',
-    maxPixelRatio: 1.5,
+    maxPixelRatio: 2.0,
     shadowMapSize: 1024,
     shadowsEnabled: true,
     bloomEnabled: true,
-    bloomStrength: 0.32,
-    bloomRadius: 0.45,
-    bloomThreshold: 0.88,
-    crowdCount: 34,
+    bloomStrength: 0.24,
+    bloomRadius: 0.32,
+    bloomThreshold: 0.92,
+    crowdCount: 22,
   },
   high: {
     preset: 'high',
-    label: 'High (Calibrated ACES + Selective Bloom)',
+    label: 'High (Razor-Sharp 4x MSAA + Crisp Selective Bloom)',
     maxPixelRatio: 2.0,
     shadowMapSize: 2048,
     shadowsEnabled: true,
     bloomEnabled: true,
-    bloomStrength: 0.4,
-    bloomRadius: 0.5,
-    bloomThreshold: 0.88,
-    crowdCount: 40,
+    bloomStrength: 0.28,
+    bloomRadius: 0.35,
+    bloomThreshold: 0.92,
+    crowdCount: 28,
   },
 };
 
