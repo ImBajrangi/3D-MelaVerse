@@ -5,6 +5,10 @@ export type GraphicsQualityPreset = 'low' | 'medium' | 'high';
 export type CameraPerspectiveMode = 'third_person' | 'first_person';
 export type RideId = 'giant_wheel' | 'carousel' | 'columbus_boat';
 export type MiniGameStallId = 'balloon_shoot' | 'ring_toss' | 'prize_shop';
+export type LotusShieldSkinId =
+  | 'pink_gold_lotus'
+  | 'sapphire_chakra'
+  | 'emerald_marigold';
 
 export interface GraphicsQualityConfig {
   preset: GraphicsQualityPreset;
@@ -19,6 +23,12 @@ export interface GraphicsQualityConfig {
   crowdCount: number;
 }
 
+/**
+ * Calibrated Post-Processing Bloom Presets (ACESFilmicToneMapping @ exposure 0.85):
+ * High threshold (0.88) and restrained strength (0.40) prevent white/yellow glare
+ * on sandstone architecture while allowing small light sources (diya flames,
+ * fairy bulbs, firework sparks, shield rims) with emissive > 1.2 to glow crisply.
+ */
 export const GRAPHICS_PRESETS: Record<GraphicsQualityPreset, GraphicsQualityConfig> = {
   low: {
     preset: 'low',
@@ -29,8 +39,8 @@ export const GRAPHICS_PRESETS: Record<GraphicsQualityPreset, GraphicsQualityConf
     bloomEnabled: false,
     bloomStrength: 0,
     bloomRadius: 0,
-    bloomThreshold: 1.0,
-    crowdCount: 30,
+    bloomThreshold: 0.95,
+    crowdCount: 28,
   },
   medium: {
     preset: 'medium',
@@ -39,21 +49,21 @@ export const GRAPHICS_PRESETS: Record<GraphicsQualityPreset, GraphicsQualityConf
     shadowMapSize: 1024,
     shadowsEnabled: true,
     bloomEnabled: true,
-    bloomStrength: 0.85,
-    bloomRadius: 0.35,
-    bloomThreshold: 0.78,
+    bloomStrength: 0.32,
+    bloomRadius: 0.45,
+    bloomThreshold: 0.88,
     crowdCount: 34,
   },
   high: {
     preset: 'high',
-    label: 'High (Ultra Emissive Bloom)',
+    label: 'High (Calibrated ACES + Selective Bloom)',
     maxPixelRatio: 2.0,
     shadowMapSize: 2048,
     shadowsEnabled: true,
     bloomEnabled: true,
-    bloomStrength: 1.35,
-    bloomRadius: 0.55,
-    bloomThreshold: 0.68,
+    bloomStrength: 0.4,
+    bloomRadius: 0.5,
+    bloomThreshold: 0.88,
     crowdCount: 40,
   },
 };
@@ -76,7 +86,8 @@ export const PRIZE_SHOP_CATALOG: PrizeShopItem[] = [
     name: 'Royal Kesari Lassi',
     category: 'powerup',
     ticketCost: 12,
-    description: 'Chilled saffron & pistachio clay-cup lassi that invigorates your festival stride.',
+    description:
+      'Chilled saffron & pistachio clay-cup lassi that invigorates your festival stride.',
     effectLabel: '+35% Sprint & Walk Speed (60s) + Full Vitality',
     speedBoostMultiplier: 1.35,
     durationSec: 60,
@@ -87,7 +98,8 @@ export const PRIZE_SHOP_CATALOG: PrizeShopItem[] = [
     name: 'Banarasi Tamatar Chaat',
     category: 'powerup',
     ticketCost: 15,
-    description: 'Tangy, spiced earthen-pot chaat that supercharges your reflexes and Karma aura.',
+    description:
+      'Tangy, spiced earthen-pot chaat that supercharges your reflexes and Karma aura.',
     effectLabel: '+45% Speed Boost (75s) + Instant Divine Blessing',
     speedBoostMultiplier: 1.45,
     durationSec: 75,
@@ -98,7 +110,8 @@ export const PRIZE_SHOP_CATALOG: PrizeShopItem[] = [
     name: 'Moradabad Brass Peacock Diya',
     category: 'souvenir',
     ticketCost: 20,
-    description: 'Hand-engraved artisanal brass oil lamp souvenir from the Grand Mela bazaar.',
+    description:
+      'Hand-engraved artisanal brass oil lamp souvenir from the Grand Mela bazaar.',
     effectLabel: 'Permanent +15% Ticket Bonus in Mini-Games',
     accentHex: '#F59E0B',
   },
@@ -107,7 +120,8 @@ export const PRIZE_SHOP_CATALOG: PrizeShopItem[] = [
     name: 'Rajasthani Kathputli Marionettes',
     category: 'souvenir',
     ticketCost: 28,
-    description: 'Traditional hand-painted wooden folk puppets dressed in mirror-workbandhani.',
+    description:
+      'Traditional hand-painted wooden folk puppets dressed in mirror-work bandhani.',
     effectLabel: 'Unlocks Royal Folk Stamp & +100 XP',
     accentHex: '#A855F7',
   },
@@ -116,7 +130,8 @@ export const PRIZE_SHOP_CATALOG: PrizeShopItem[] = [
     name: 'Maharaja All-Access VIP Mela Pass',
     category: 'vip_pass',
     ticketCost: 40,
-    description: 'Golden silk wristband granting unlimited free boarding on all 3 Mela Rides & +20% permanent walk speed.',
+    description:
+      'Golden silk wristband granting unlimited free boarding on all 3 Mela Rides & +20% permanent walk speed.',
     effectLabel: 'Free Rides Forever + Permanent +20% Speed',
     speedBoostMultiplier: 1.2,
     accentHex: '#38BDF8',
@@ -127,8 +142,13 @@ export interface MelaStoreState {
   coins: number;
   tickets: number;
   totalXp: number;
+  highScore: number;
   unlockedStamps: string[];
   ownedPrizeIds: string[];
+  unlockedAttireIds: string[];
+  equippedAttireId: string;
+  equippedTrailColorHex: string;
+  equippedShieldSkin: LotusShieldSkinId;
   activeFoodBoostMultiplier: number;
   activeFoodBoostRemainingSec: number;
   activeFoodBoostName: string | null;
@@ -148,7 +168,12 @@ export interface MelaStoreState {
   addTickets: (delta: number) => void;
   spendTickets: (amount: number) => boolean;
   addXp: (delta: number) => void;
+  updateHighScore: (score: number) => void;
   unlockStamp: (stamp: string) => void;
+  unlockAttire: (attireId: string, costCoins: number) => boolean;
+  setEquippedAttireId: (attireId: string) => void;
+  setEquippedTrailColorHex: (hex: string) => void;
+  setEquippedShieldSkin: (skin: LotusShieldSkinId) => void;
   redeemPrize: (item: PrizeShopItem) => { ok: boolean; reason?: string };
   stepFoodBoostTimer: (dt: number) => void;
   setGraphicsPreset: (preset: GraphicsQualityPreset) => void;
@@ -157,7 +182,10 @@ export interface MelaStoreState {
   setIsMuted: (muted: boolean) => void;
   toggleCameraMode: () => void;
   setCameraMode: (mode: CameraPerspectiveMode) => void;
-  mountRide: (rideId: RideId, ticketCost: number) => { ok: boolean; reason?: string };
+  mountRide: (
+    rideId: RideId,
+    ticketCost: number
+  ) => { ok: boolean; reason?: string };
   exitRide: () => void;
   openStallModal: (stall: MiniGameStallId | null) => void;
   setMobileControlsVisible: (visible: boolean) => void;
@@ -169,8 +197,13 @@ export const useMelaStore = create<MelaStoreState>()(
       coins: 350,
       tickets: 25,
       totalXp: 280,
+      highScore: 1850,
       unlockedStamps: ['Brass Braj Pichkari & Bansuri Stamp'],
       ownedPrizeIds: [],
+      unlockedAttireIds: ['braj_utsav_kesar'],
+      equippedAttireId: 'braj_utsav_kesar',
+      equippedTrailColorHex: '#F59E0B',
+      equippedShieldSkin: 'pink_gold_lotus',
       activeFoodBoostMultiplier: 1.0,
       activeFoodBoostRemainingSec: 0,
       activeFoodBoostName: null,
@@ -185,7 +218,9 @@ export const useMelaStore = create<MelaStoreState>()(
       mobileControlsVisible: false,
 
       addCoins: (delta) =>
-        set((state) => ({ coins: Math.max(0, Math.round(state.coins + delta)) })),
+        set((state) => ({
+          coins: Math.max(0, Math.round(state.coins + delta)),
+        })),
 
       spendCoins: (amount) => {
         const current = get().coins;
@@ -196,7 +231,9 @@ export const useMelaStore = create<MelaStoreState>()(
 
       addTickets: (delta) =>
         set((state) => {
-          const bonusMultiplier = state.ownedPrizeIds.includes('brass_peacock_diya')
+          const bonusMultiplier = state.ownedPrizeIds.includes(
+            'brass_peacock_diya'
+          )
             ? 1.15
             : 1.0;
           const gained = Math.max(0, Math.round(delta * bonusMultiplier));
@@ -211,7 +248,14 @@ export const useMelaStore = create<MelaStoreState>()(
       },
 
       addXp: (delta) =>
-        set((state) => ({ totalXp: Math.max(0, Math.round(state.totalXp + delta)) })),
+        set((state) => ({
+          totalXp: Math.max(0, Math.round(state.totalXp + delta)),
+        })),
+
+      updateHighScore: (score) =>
+        set((state) => ({
+          highScore: Math.max(state.highScore, Math.round(score)),
+        })),
 
       unlockStamp: (stamp) =>
         set((state) => ({
@@ -220,13 +264,45 @@ export const useMelaStore = create<MelaStoreState>()(
             : [...state.unlockedStamps, stamp],
         })),
 
+      unlockAttire: (attireId, costCoins) => {
+        const state = get();
+        if (state.unlockedAttireIds.includes(attireId)) {
+          set({ equippedAttireId: attireId });
+          return true;
+        }
+        if (state.coins < costCoins) {
+          return false;
+        }
+        set({
+          coins: state.coins - costCoins,
+          unlockedAttireIds: [...state.unlockedAttireIds, attireId],
+          equippedAttireId: attireId,
+        });
+        return true;
+      },
+
+      setEquippedAttireId: (attireId) => set({ equippedAttireId: attireId }),
+
+      setEquippedTrailColorHex: (hex) => set({ equippedTrailColorHex: hex }),
+
+      setEquippedShieldSkin: (skin) => set({ equippedShieldSkin: skin }),
+
       redeemPrize: (item) => {
         const state = get();
         if (state.tickets < item.ticketCost) {
-          return { ok: false, reason: `Need ${item.ticketCost} Tickets (you have ${state.tickets})` };
+          return {
+            ok: false,
+            reason: `Need ${item.ticketCost} Tickets (you have ${state.tickets})`,
+          };
         }
-        if (item.category !== 'powerup' && state.ownedPrizeIds.includes(item.id)) {
-          return { ok: false, reason: 'Already owned in your Mela collection!' };
+        if (
+          item.category !== 'powerup' &&
+          state.ownedPrizeIds.includes(item.id)
+        ) {
+          return {
+            ok: false,
+            reason: 'Already owned in your Mela collection!',
+          };
         }
 
         const nextOwned = state.ownedPrizeIds.includes(item.id)
@@ -264,7 +340,8 @@ export const useMelaStore = create<MelaStoreState>()(
         const nextRem = Math.max(0, state.activeFoodBoostRemainingSec - dt);
         set({
           activeFoodBoostRemainingSec: nextRem,
-          activeFoodBoostMultiplier: nextRem > 0 ? state.activeFoodBoostMultiplier : 1.0,
+          activeFoodBoostMultiplier:
+            nextRem > 0 ? state.activeFoodBoostMultiplier : 1.0,
           activeFoodBoostName: nextRem > 0 ? state.activeFoodBoostName : null,
         });
       },
@@ -277,7 +354,9 @@ export const useMelaStore = create<MelaStoreState>()(
       toggleCameraMode: () =>
         set((state) => ({
           cameraMode:
-            state.cameraMode === 'third_person' ? 'first_person' : 'third_person',
+            state.cameraMode === 'third_person'
+              ? 'first_person'
+              : 'third_person',
         })),
       setCameraMode: (mode) => set({ cameraMode: mode }),
 
@@ -315,13 +394,18 @@ export const useMelaStore = create<MelaStoreState>()(
         set({ mobileControlsVisible: visible }),
     }),
     {
-      name: 'melaverse-grand-mela-wallet-v2',
+      name: 'melaverse-grand-mela-wallet-v3',
       partialize: (state) => ({
         coins: state.coins,
         tickets: state.tickets,
         totalXp: state.totalXp,
+        highScore: state.highScore,
         unlockedStamps: state.unlockedStamps,
         ownedPrizeIds: state.ownedPrizeIds,
+        unlockedAttireIds: state.unlockedAttireIds,
+        equippedAttireId: state.equippedAttireId,
+        equippedTrailColorHex: state.equippedTrailColorHex,
+        equippedShieldSkin: state.equippedShieldSkin,
         hasVipPass: state.hasVipPass,
         graphicsPreset: state.graphicsPreset,
         showFps: state.showFps,

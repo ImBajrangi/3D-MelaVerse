@@ -1,4 +1,5 @@
 import type { FestivalWorldId } from './rules';
+import type { LotusShieldSkinId } from '../store/useMelaStore';
 
 export interface FestivalWorldMeta {
   id: string;
@@ -28,65 +29,78 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     hinduCalendarTithi: 'Phalguna Purnima (Lunar Full Moon)',
     playableSceneId: 'holi_braj',
     isMvpFlagship: true,
-    architectureStyle: 'Carved Braj Red Sandstone Havelis, Jharokha Balconies & Nagara Shikhara Mandir',
+    architectureStyle:
+      'Carved Braj Red Sandstone Havelis, Jharokha Balconies & Nagara Shikhara Mandir',
     signatureActivities: [
       'Lathmar & Phoolon ki Holi Courtyard Celebration',
-      'Gulal Pichkari Multiplayer Color Challenge',
+      'Gulal Pichkari Multiplayer Color Challenge & Vat Refills',
       'Braj Mithai & Gujiya Halwai Tasting',
       'Sacred Temple Chowk Rangoli Creation',
     ],
-    featuredMinigames: ['Holi Color Challenge', 'Rangoli Studio', 'Dhol Rhythm Circle'],
+    featuredMinigames: [
+      'Holi Color Challenge',
+      'Rangoli Studio',
+      'Dhol Rhythm Circle',
+    ],
     culturalCollectible: 'Brass Braj Pichkari & Bansuri Stamp',
-    ambientAudioProfile: 'Braj Dholak, Manjira Cymbals, Bansuri Flute & Joyful Chowk Crowd',
+    ambientAudioProfile:
+      'Braj Dholak, Manjira Cymbals, Bansuri Flute & Joyful Chowk Crowd',
     skyColorHex: '#FCE7F3',
     fogColorHex: '#FBCFE8',
     accentHex: '#E11D48',
     summary:
-      'Flagship MVP vertical slice set in the sandstone temple streets of Barsana and Vrindavan, alive with organic gulal clouds, marigold torans, and community celebration.',
+      'Flagship vertical slice set in the sandstone temple streets of Barsana and Vrindavan, alive with organic gulal clouds, marigold torans, color vats, and community celebration.',
   },
   {
     id: 'world_02_diwali',
     worldNumber: 'WORLD 02',
     title: 'Diwali: Heritage Town & Deepotsav Ghat',
-    region: 'North & Central Indian Heritage Town',
+    region: 'Varanasi & Braj Riverside Heritage Ghat',
     hinduCalendarTithi: 'Kartika Amavasya (Dark Moon Night)',
     playableSceneId: 'diwali_ghat',
-    architectureStyle: 'Carved Sandstone Ghats, Deepstambh Lamp Towers & Illuminated Haveli Courtyards',
+    architectureStyle:
+      'Carved Sandstone River Ghats, Deepstambh Lamp Towers & Reflective Riverfront',
     signatureActivities: [
-      'Lighting 108 Sacred Clay Diyas along the Ghat',
-      'Symmetric Deepavali Rangoli & Kandil Lantern Hanging',
-      'Kaju Katli & Ladoo Mithai Bazaar Exploration',
+      'Rhythm & Diyas [R] Illumination along the Stepped Ghat',
+      'Multi-Stage Aerial Fireworks [F] over Reflective River Water',
+      'Floating River Diyas & Ascending Sky Lanterns',
     ],
-    featuredMinigames: ['Diya Illumination Relay', 'Rangoli Studio', 'Kandil Craft'],
+    featuredMinigames: [
+      'Diya Illumination Relay',
+      'Rangoli Studio',
+      'Sky Fireworks',
+    ],
     culturalCollectible: 'Terracotta Panch-Arti Diya Stamp',
-    ambientAudioProfile: 'Evening Temple Conch (Shankh), Sitar Raga Yaman & Gentle River Lapping',
+    ambientAudioProfile:
+      'Evening Temple Conch (Shankh), Sitar Raga Yaman & Gentle River Lapping',
     skyColorHex: '#0F172A',
     fogColorHex: '#1E1B4B',
     accentHex: '#F59E0B',
     summary:
-      'Golden nocturnal celebration where thousands of warm terracotta diyas and hanging kandil lanterns reflect off carved heritage stonework.',
+      'Golden nocturnal celebration where warm terracotta diyas, multi-stage fireworks, and floating sky lanterns reflect off stepped river ghats.',
   },
   {
     id: 'world_03_navratri_gujarat',
     worldNumber: 'WORLD 03',
-    title: 'Navratri: Gujarat Garba Chowk',
-    region: 'Ahmedabad & Vadodara, Gujarat',
+    title: 'Mela Central Hub & Navratri Garba Chowk',
+    region: 'Grand Indian Mela Grounds & Cultural Hub',
     hinduCalendarTithi: 'Ashvin Shukla Pratipada to Navami (9 Nights)',
     playableSceneId: 'mela_central',
-    architectureStyle: 'Pol Courtyard Houses, Carved Wooden Brackets & Concentric Garba Maidan',
+    architectureStyle:
+      'Aakash Jhula Giant Wheel, Festive Craft Stalls, Portals & Concentric Maidan',
     signatureActivities: [
-      'Concentric Garba Circle around the Garbo Clay Lamp',
-      'Multiplayer Dandiya Raas Rhythm Duels',
-      'Chaniya Choli & Kediyu Mirror-Work Customization',
+      'Boarding the Aakash Jhula Giant Wheel [E] in 1st-Person',
+      'Interactive Glowing Floor Rangoli Stamping [G]',
+      'Balloon Shooting, Ring Toss & Prize Shop Bazaar',
     ],
-    featuredMinigames: ['Dandiya Rhythm Raas', 'Garba Sync Circle'],
+    featuredMinigames: ['Balloon Shoot', 'Ring Toss', 'Rangoli Stamp Creator'],
     culturalCollectible: 'Abhla Mirror-Work Dandiya Sticks Stamp',
-    ambientAudioProfile: 'Energetic Dhol, Shehnai & Clapping Garba Talis',
+    ambientAudioProfile: 'Energetic Dhol, Calliope Organ & Clapping Garba Talis',
     skyColorHex: '#1E1024',
     fogColorHex: '#2E1437',
-    accentHex: '#EC4899',
+    accentHex: '#38BDF8',
     summary:
-      'Rhythmic nine-night celebration featuring concentric dance rings, mirror-work textiles, and synchronized multiplayer Dandiya challenges.',
+      'Grand Mela carnival hub featuring the illuminated Aakash Jhula Giant Wheel, playable mini-game stalls, glowing world portals, and live floor Rangoli stamping.',
   },
   {
     id: 'world_04_ganesh_chaturthi',
@@ -95,15 +109,17 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Pune & Mumbai Heritage Quarters, Maharashtra',
     hinduCalendarTithi: 'Bhadrapada Shukla Chaturthi',
     playableSceneId: 'holi_braj',
-    architectureStyle: 'Wada Courtyards, Eco-Friendly Bamboo & Shadu Clay Pandal Pavilions',
+    architectureStyle:
+      'Wada Courtyards, Eco-Friendly Bamboo & Shadu Clay Pandal Pavilions',
     signatureActivities: [
       'Eco-Friendly Shadu Clay Pandal Decoration',
       'Ukadiache Modak Steaming & Preparation',
       'Dhol-Tasha Pathak Procession Rhythm',
     ],
     featuredMinigames: ['Modak Kitchen Master', 'Eco-Pandal Architect'],
-    culturalCollectible: 'Swarna Modak &Hibiscus Garland Stamp',
-    ambientAudioProfile: 'Resonant Maharashtra Dhol-Tasha Ensemble & Zanj Cymbals',
+    culturalCollectible: 'Swarna Modak & Hibiscus Garland Stamp',
+    ambientAudioProfile:
+      'Resonant Maharashtra Dhol-Tasha Ensemble & Zanj Cymbals',
     skyColorHex: '#FEF3C7',
     fogColorHex: '#FDE68A',
     accentHex: '#D97706',
@@ -117,7 +133,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Braj Mandal, Uttar Pradesh',
     hinduCalendarTithi: 'Bhadrapada Krishna Ashtami (Midnight Rohini Nakshatra)',
     playableSceneId: 'diwali_ghat',
-    architectureStyle: 'Kadamba Groves, Yamuna Kesi Ghat Pavilions & Floral Jhanki Mandapas',
+    architectureStyle:
+      'Kadamba Groves, Yamuna Kesi Ghat Pavilions & Floral Jhanki Mandapas',
     signatureActivities: [
       'Cooperative 8-Player Dahi Handi Matki Pyramid',
       'Floral Jhanki & Swing (Hindola) Decoration',
@@ -125,7 +142,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     ],
     featuredMinigames: ['Dahi Handi Co-op Pyramid', 'Jhanki Floral Craft'],
     culturalCollectible: 'Peacock Feather (Mor Pankh) & Makhan Matki Stamp',
-    ambientAudioProfile: 'Nocturnal Bansuri Raga Khamaj, Temple Bells & Yamuna Breeze',
+    ambientAudioProfile:
+      'Nocturnal Bansuri Raga Khamaj, Temple Bells & Yamuna Breeze',
     skyColorHex: '#0C192C',
     fogColorHex: '#172554',
     accentHex: '#38BDF8',
@@ -139,7 +157,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Ayodhya & Sarayu Riverfront, Uttar Pradesh',
     hinduCalendarTithi: 'Chaitra Shukla Navami',
     playableSceneId: 'holi_braj',
-    architectureStyle: 'Grand Nagara Pink Sandstone Mandapas, Carved Pillars & Sarayu Ghats',
+    architectureStyle:
+      'Grand Nagara Pink Sandstone Mandapas, Carved Pillars & Sarayu Ghats',
     signatureActivities: [
       'Heritage Architecture & Epics Storytelling Trail',
       'Sarayu Ghat Evening Deepdaan',
@@ -161,15 +180,21 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Kumartuli & North Kolkata, West Bengal',
     hinduCalendarTithi: 'Ashvin Shukla Shashthi to Dashami',
     playableSceneId: 'mela_central',
-    architectureStyle: 'Terracotta Bishnupur Temples, Zamindari Thakur Dalans & Bamboo-Cloth Art Pandals',
+    architectureStyle:
+      'Terracotta Bishnupur Temples, Zamindari Thakur Dalans & Bamboo-Cloth Art Pandals',
     signatureActivities: [
       'Thematic Pandal Hopping & Photography Missions',
       'Dhak Drum & Dhunuchi Dance Rhythm Challenge',
       'Alpona Rice-Paste Floor Artistry',
     ],
-    featuredMinigames: ['Dhak Rhythm & Dhunuchi', 'Alpona Art Studio', 'Pandal Photo Safari'],
+    featuredMinigames: [
+      'Dhak Rhythm & Dhunuchi',
+      'Alpona Art Studio',
+      'Pandal Photo Safari',
+    ],
     culturalCollectible: 'Kashphool & Terracotta Dhunuchi Stamp',
-    ambientAudioProfile: 'Iconic Bengal Dhak Beats, Shankh Trio & Festive Pandal Murmur',
+    ambientAudioProfile:
+      'Iconic Bengal Dhak Beats, Shankh Trio & Festive Pandal Murmur',
     skyColorHex: '#FFF1F2',
     fogColorHex: '#FFE4E6',
     accentHex: '#E11D48',
@@ -183,15 +208,21 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Alappuzha & Aranmula, Kerala',
     hinduCalendarTithi: 'Thiruvonam Nakshatra in Chingam Month',
     playableSceneId: 'mela_central',
-    architectureStyle: 'Nalukettu Sloped Tile Courtyards, Palm-Fringed Backwaters & Chundan Vallam',
+    architectureStyle:
+      'Nalukettu Sloped Tile Courtyards, Palm-Fringed Backwaters & Chundan Vallam',
     signatureActivities: [
       '10-Ring Concentric Floral Pookalam Creation',
       'Multiplayer Vallam Kali (Snake Boat) Synchronized Rowing',
       '26-Dish Onam Sadhya Banana-Leaf Culinary Prep',
     ],
-    featuredMinigames: ['Vallam Kali Boat Race', 'Pookalam Floral Studio', 'Sadhya Chef'],
+    featuredMinigames: [
+      'Vallam Kali Boat Race',
+      'Pookalam Floral Studio',
+      'Sadhya Chef',
+    ],
     culturalCollectible: 'Aranmula Kannadi Mirror & Vallam Oar Stamp',
-    ambientAudioProfile: 'Chenda Melam Percussion, Vanchipattu Boat Songs & Backwater Birds',
+    ambientAudioProfile:
+      'Chenda Melam Percussion, Vanchipattu Boat Songs & Backwater Birds',
     skyColorHex: '#ECFDF5',
     fogColorHex: '#D1FAE5',
     accentHex: '#10B981',
@@ -205,7 +236,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Thanjavur & Madurai Region, Tamil Nadu',
     hinduCalendarTithi: 'Thai Month First Day (Uttarayana Sankranti)',
     playableSceneId: 'holi_braj',
-    architectureStyle: 'Agraharam Verandahs, Gopuram Gateways, Sugarcane Groves & Terracotta Courtyards',
+    architectureStyle:
+      'Agraharam Verandahs, Gopuram Gateways, Sugarcane Groves & Terracotta Courtyards',
     signatureActivities: [
       'Clay Pot Sakkarai Pongal Boil-Over ("Pongalo Pongal!") Timing',
       'Dot-Grid Sikku Kolam Rice-Flour Competition',
@@ -213,7 +245,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     ],
     featuredMinigames: ['Sakkarai Pongal Cook-Off', 'Sikku Kolam Grid Puzzle'],
     culturalCollectible: 'Turmeric-Tied Clay Pongal Pot Stamp',
-    ambientAudioProfile: 'Nadaswaram & Thavil Auspicious Music, Village Breeze & Temple Bells',
+    ambientAudioProfile:
+      'Nadaswaram & Thavil Auspicious Music, Village Breeze & Temple Bells',
     skyColorHex: '#FEF9C3',
     fogColorHex: '#FEF08A',
     accentHex: '#CA8A04',
@@ -227,7 +260,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Jaipur & Ahmedabad Pol Rooftops',
     hinduCalendarTithi: 'Solar Makara Rashi Transition (January 14/15)',
     playableSceneId: 'mela_central',
-    architectureStyle: 'Interconnected Sandstone & Pol Terraces, Wind Pavilions (Chhatris) & Sky Bridges',
+    architectureStyle:
+      'Interconnected Sandstone & Pol Terraces, Wind Pavilions (Chhatris) & Sky Bridges',
     signatureActivities: [
       '3D Wind-Physics Kite (Patang) Crafting & Sky Duels',
       'Til-Gud Ladoo & Undhiyu Rooftop Feast',
@@ -235,7 +269,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     ],
     featuredMinigames: ['Uttarayan Kite Sky Tourney', 'Patang Workshop'],
     culturalCollectible: 'Firki Spool & Diamond Patang Stamp',
-    ambientAudioProfile: 'Crisp High-Altitude Wind, Joyful "Kai Po Che!" Rooftop Cheers & Dhol',
+    ambientAudioProfile:
+      'Crisp High-Altitude Wind, Joyful "Kai Po Che!" Rooftop Cheers & Dhol',
     skyColorHex: '#E0F2FE',
     fogColorHex: '#BAE6FD',
     accentHex: '#0284C7',
@@ -249,7 +284,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Patna & Munger Ghats, Bihar',
     hinduCalendarTithi: 'Kartika Shukla Shashthi & Saptami',
     playableSceneId: 'diwali_ghat',
-    architectureStyle: 'Expansive Stepped River Ghats, Bamboo Soop Canopies & Sugarcane Mandapas',
+    architectureStyle:
+      'Expansive Stepped River Ghats, Bamboo Soop Canopies & Sugarcane Mandapas',
     signatureActivities: [
       'Ghat Cleanliness & Eco-Preparation Community Quest',
       'Thekua & Bamboo Soop (Winnowing Basket) Arrangement',
@@ -257,7 +293,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     ],
     featuredMinigames: ['Ghat Community Restoration', 'Thekua & Soop Prep'],
     culturalCollectible: 'Woven Bamboo Soop & Rising Sun Stamp',
-    ambientAudioProfile: 'Soulful Maithili/Bhojpuri Folk Melodies, Gentle Ganga Flow & Dawn Birds',
+    ambientAudioProfile:
+      'Soulful Maithili/Bhojpuri Folk Melodies, Gentle Ganga Flow & Dawn Birds',
     skyColorHex: '#31102F',
     fogColorHex: '#4A154B',
     accentHex: '#F97316',
@@ -271,7 +308,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     region: 'Varanasi (Kashi), Uttar Pradesh',
     hinduCalendarTithi: 'Phalguna Krishna Chaturdashi',
     playableSceneId: 'diwali_ghat',
-    architectureStyle: 'Ancient Kashi Riverfront Ghats, Stone Shikhara Spires & Bilva Courtyards',
+    architectureStyle:
+      'Ancient Kashi Riverfront Ghats, Stone Shikhara Spires & Bilva Courtyards',
     signatureActivities: [
       'Kashi Heritage Alley & Ghat Exploration',
       'Classical Rudra Veena & Damaru Acoustic Resonance Discovery',
@@ -279,7 +317,8 @@ export const TWELVE_FESTIVAL_WORLDS: FestivalWorldMeta[] = [
     ],
     featuredMinigames: ['Classical Raga Resonance', 'Kashi Heritage Trail'],
     culturalCollectible: 'Brass Damaru & Bilva Patra Stamp',
-    ambientAudioProfile: 'Deep Tanpura Drone, Rudra Veena, Damaru Percussion & Ganga Arti Bells',
+    ambientAudioProfile:
+      'Deep Tanpura Drone, Rudra Veena, Damaru Percussion & Ganga Arti Bells',
     skyColorHex: '#090D16',
     fogColorHex: '#111827',
     accentHex: '#818CF8',
@@ -317,7 +356,7 @@ export const COURT_NPCS: NpcCharacter[] = [
       'Namaste, traveler! Welcome to Braj Mandal. On Phalguna Purnima, every courtyard becomes a living canvas of friendship and devotion.',
     questTitle: 'Sacred Illumination of Braj',
     questDetail:
-      'Light at least 4 sacred brass Diyas around the courtyard (press [E] near a Diya or splash it with [2] Haldi Wave) and celebrate with 8 festival revelers.',
+      'Light at least 4 sacred brass Diyas around the courtyard (press [R] on the beat or [E] near a Diya) and celebrate with festival revelers.',
     rewardCoins: 120,
     rewardXp: 150,
     stampUnlocked: 'Braj Mandir Kalash Stamp',
@@ -331,10 +370,10 @@ export const COURT_NPCS: NpcCharacter[] = [
     kurtaColor: 0xe11d48,
     pagdiColor: 0xfbbf24,
     greeting:
-      'Look at the central Chowk! A traditional Rangoli welcomes auspiciousness into the village. Open the Rangoli Studio [G] to paint your own mandala onto the 3D courtyard!',
+      'Look at the central Chowk! A traditional Rangoli welcomes auspiciousness into the village. Press [G] to stamp glowing Rangoli art or open the Rangoli Studio!',
     questTitle: 'Mandala of the Courtyard',
     questDetail:
-      'Open the Rangoli Studio [G], create or apply a symmetric mandala design, and bind it directly to the 3D Braj courtyard floor.',
+      'Press [G] to stamp glowing geometric Rangoli art around the courtyard or customize your mandala in the Rangoli Studio.',
     rewardCoins: 100,
     rewardXp: 125,
     stampUnlocked: 'Symmetric Lotus Rangoli Stamp',
@@ -351,7 +390,7 @@ export const COURT_NPCS: NpcCharacter[] = [
       'Hear the beat of the Dhol! Our village challengers—Sprinters, Matki Lobbers, and Dhol Captains—are ready for a friendly Holi color match!',
     questTitle: 'Rhythm of the Pichkari',
     questDetail:
-      'Use [1] Gulabi Burst, [2] Haldi Wave, and [3] Neel Pichkari to splash festival challengers while dodging their telegraphed water splashes with [Shift].',
+      'Fire Gulal [Space/Click], summon your Lotus Shield [Q/Right-Click] for a speed boost on block, and refill your Gulal Tank at the 4 courtyard color vats!',
     rewardCoins: 110,
     rewardXp: 140,
     stampUnlocked: 'Braj Dholak & Manjira Stamp',
@@ -368,7 +407,7 @@ export const COURT_NPCS: NpcCharacter[] = [
       'Fresh saffron Gujiyas, Kesar Thandai, and warm Malpuas! Talking to me restores your Utsav Spirit pips whenever you need a breather!',
     questTitle: 'Sweet Hospitality of Braj',
     questDetail:
-      'Sample traditional Braj Gujiya and Saffron Thandai to restore full Utsav Spirit Pips (5/5) and earn a Culinary Heritage stamp.',
+      'Sample traditional Braj Gujiya and Saffron Thandai to restore full Utsav Spirit Pips and earn a Culinary Heritage stamp.',
     rewardCoins: 80,
     rewardXp: 100,
     stampUnlocked: 'Kesar Gujiya & Thandai Stamp',
@@ -384,48 +423,95 @@ export interface CharacterAttirePreset {
   pagdiHex: string;
   skinHex: string;
   unlockCostCoins: number;
+  perkLabel?: string;
 }
 
 export const ATTIRE_PRESETS: CharacterAttirePreset[] = [
   {
     id: 'braj_utsav_kesar',
-    name: 'Braj Utsav Saffron Kurta & Pagdi',
+    name: 'Braj Kurta (Saffron & Crimson Pagdi)',
     regionOrigin: 'Mathura & Vrindavan, UP',
     kurtaHex: '#F59E0B',
     dhotiHex: '#FFFBEB',
     pagdiHex: '#E11D48',
     skinHex: '#D99B72',
     unlockCostCoins: 0,
+    perkLabel: 'Starter Festive Attire',
   },
   {
-    id: 'gujarat_navratri_indigo',
-    name: 'Royal Kediyu & Abhla Mirror Crimson',
-    regionOrigin: 'Vadodara, Gujarat',
+    id: 'royal_sherwani',
+    name: 'Royal Sherwani (Indigo & Gold Zari)',
+    regionOrigin: 'Jaipur & Lucknow Heritage',
     kurtaHex: '#1D4ED8',
     dhotiHex: '#FDE047',
-    pagdiHex: '#E11D48',
-    skinHex: '#C6865A',
-    unlockCostCoins: 0,
-  },
-  {
-    id: 'kerala_kasavu_gold',
-    name: 'Kerala Kasavu Ivory & Gold Border',
-    regionOrigin: 'Alappuzha, Kerala',
-    kurtaHex: '#FEFCE8',
-    dhotiHex: '#FDE047',
-    pagdiHex: '#10B981',
-    skinHex: '#B47248',
-    unlockCostCoins: 100,
-  },
-  {
-    id: 'bengal_puja_crimson',
-    name: 'Shantiniketan Silk & Sindoor Border',
-    regionOrigin: 'Kolkata, West Bengal',
-    kurtaHex: '#BE123C',
-    dhotiHex: '#FFF1F2',
     pagdiHex: '#F59E0B',
+    skinHex: '#C6865A',
+    unlockCostCoins: 80,
+    perkLabel: '+15% Gulal Tank Capacity',
+  },
+  {
+    id: 'festive_lehenga',
+    name: 'Festive Lehenga (Rani Rose & Kundan)',
+    regionOrigin: 'Barsana & Jodhpur Utsav',
+    kurtaHex: '#E11D48',
+    dhotiHex: '#FDE68A',
+    pagdiHex: '#10B981',
+    skinHex: '#E0AC69',
+    unlockCostCoins: 120,
+    perkLabel: '+20% Marigold Dash Speed',
+  },
+  {
+    id: 'neon_mela_jacket',
+    name: 'Neon Mela Jacket (Electric Peacock)',
+    regionOrigin: 'Contemporary Grand Mela Edition',
+    kurtaHex: '#0284C7',
+    dhotiHex: '#1E1B4B',
+    pagdiHex: '#F43F5E',
     skinHex: '#D99B72',
-    unlockCostCoins: 150,
+    unlockCostCoins: 160,
+    perkLabel: '+25% Lotus Shield Aura',
+  },
+];
+
+export const GULAL_TRAIL_SWATCHES = [
+  { id: 'marigold', label: 'Marigold Gold', hex: '#F59E0B', threeHex: 0xf59e0b },
+  { id: 'gulabi', label: 'Gulabi Rose', hex: '#F43F5E', threeHex: 0xf43f5e },
+  { id: 'neel', label: 'Neel Cyan', hex: '#38BDF8', threeHex: 0x38bdf8 },
+  { id: 'panna', label: 'Panna Emerald', hex: '#10B981', threeHex: 0x10b981 },
+  { id: 'violet', label: 'Utsav Violet', hex: '#A855F7', threeHex: 0xa855f7 },
+];
+
+export const LOTUS_SHIELD_SKINS: {
+  id: LotusShieldSkinId;
+  name: string;
+  domeHex: string;
+  rimHex: string;
+  threeDomeHex: number;
+  threeRimHex: number;
+}[] = [
+  {
+    id: 'pink_gold_lotus',
+    name: 'Pink & Gold Sacred Lotus',
+    domeHex: '#F43F5E',
+    rimHex: '#FBBF24',
+    threeDomeHex: 0xf43f5e,
+    threeRimHex: 0xfbbf24,
+  },
+  {
+    id: 'sapphire_chakra',
+    name: 'Neel Sapphire Sudarshan',
+    domeHex: '#38BDF8',
+    rimHex: '#E0F2FE',
+    threeDomeHex: 0x38bdf8,
+    threeRimHex: 0xe0f2fe,
+  },
+  {
+    id: 'emerald_marigold',
+    name: 'Panna Emerald & Marigold',
+    domeHex: '#10B981',
+    rimHex: '#F59E0B',
+    threeDomeHex: 0x10b981,
+    threeRimHex: 0xf59e0b,
   },
 ];
 

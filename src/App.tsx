@@ -77,6 +77,11 @@ export function App() {
   const unlockStamp = useMelaStore((s) => s.unlockStamp);
   const addTickets = useMelaStore((s) => s.addTickets);
   const stepFoodBoostTimer = useMelaStore((s) => s.stepFoodBoostTimer);
+  const equippedAttireId = useMelaStore((s) => s.equippedAttireId);
+  const equippedTrailColorHex = useMelaStore((s) => s.equippedTrailColorHex);
+  const equippedShieldSkin = useMelaStore((s) => s.equippedShieldSkin);
+  const highScore = useMelaStore((s) => s.highScore);
+  const updateHighScore = useMelaStore((s) => s.updateHighScore);
 
   const [assetLoadProgress, setAssetLoadProgress] = useState<AssetLoadProgress>({
     loadedItems: 5,
@@ -91,12 +96,20 @@ export function App() {
   const [selectedGulal, setSelectedGulal] = useState<GulalColorId>('gulabi');
   const [selectedArsenal, setSelectedArsenal] =
     useState<ArsenalModeId>('pichkari');
-  const [attire, setAttire] = useState<CharacterAttirePreset>(ATTIRE_PRESETS[0]);
+  const [attire, setAttire] = useState<CharacterAttirePreset>(
+    () =>
+      ATTIRE_PRESETS.find((p) => p.id === equippedAttireId) ?? ATTIRE_PRESETS[0]
+  );
   const [rangoliGrid, setRangoliGrid] = useState<number[][]>(DEFAULT_RANGOLI_GRID);
   const [resetCounter, setResetCounter] = useState<number>(0);
   const [fireworksCount, setFireworksCount] = useState<number>(0);
   const [shieldTriggerCount, setShieldTriggerCount] = useState<number>(0);
   const [fireTriggerCount, setFireTriggerCount] = useState<number>(0);
+  const [dashTriggerCount, setDashTriggerCount] = useState<number>(0);
+  const [rhythmDiyaTriggerCount, setRhythmDiyaTriggerCount] =
+    useState<number>(0);
+  const [stampRangoliTriggerCount, setStampRangoliTriggerCount] =
+    useState<number>(0);
   const [karmaOfferingCount, setKarmaOfferingCount] = useState<number>(0);
   const [jumpTriggerCount, setJumpTriggerCount] = useState<number>(0);
   const [interactTriggerCount, setInteractTriggerCount] = useState<number>(0);
@@ -110,6 +123,14 @@ export function App() {
     sprinting: false,
   });
   const [mobileLookDeltaYaw, setMobileLookDeltaYaw] = useState<number>(0);
+
+  // Sync attire preset when equippedAttireId changes in Zustand store
+  useEffect(() => {
+    const matched = ATTIRE_PRESETS.find((p) => p.id === equippedAttireId);
+    if (matched) {
+      setAttire(matched);
+    }
+  }, [equippedAttireId]);
 
   // Overlay Modals
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
@@ -125,8 +146,9 @@ export function App() {
     spiritPips: 6,
     maxSpiritPips: 6,
     spiritTrail: 6,
+    gulalTankPct: 100,
     score: 0,
-    bestScore: 1250,
+    bestScore: highScore,
     combo: 1,
     comboStreak: 0,
     comboTimerRatio: 0,
@@ -144,8 +166,9 @@ export function App() {
     activeWave: 1,
     activeBlessing: null,
     objectiveHint:
-      'Space/Click: Fire · [V] 1st/3rd Cam · [E] Ride Jhula / Stalls',
+      '[Space/LMB] Fire Gulal · [Q/RMB] Lotus Shield · [Shift] Dash · [R] Diyas',
     magnetLockInfo: null,
+    floatingCallout: null,
     adaptiveDifficulty: {
       tierId: 'balanced',
       label: 'SAMTULYA · BALANCED',
@@ -164,7 +187,7 @@ export function App() {
 
   const [finalStats, setFinalStats] = useState({
     score: 0,
-    bestScore: 1250,
+    bestScore: highScore,
     revelersSplashed: 0,
     targetRevelers: 12,
     diyasLit: 0,
@@ -260,10 +283,11 @@ export function App() {
     ) => {
       document.exitPointerLock?.();
       exitRide();
+      updateHighScore(stats.score);
       setOutcome(roundOutcome);
       setFinalStats((prev) => ({
         score: stats.score,
-        bestScore: Math.max(prev.bestScore, stats.score),
+        bestScore: Math.max(prev.bestScore, highScore, stats.score),
         revelersSplashed: stats.revelersSplashed,
         targetRevelers: 12,
         diyasLit: stats.diyasLit,
@@ -272,10 +296,10 @@ export function App() {
       }));
       setGameState('gameover');
     },
-    [exitRide]
+    [exitRide, highScore, updateHighScore]
   );
 
-  // Global keyboard shortcuts for Title Start, Camera Toggle [V], Settings [O], Pause, and Studios
+  // Global keyboard shortcuts for Title Start, Camera Toggle [V], Settings [O], Pause, and Action Hotbar ([R] Rhythm & Diyas, [F] Fireworks, [G] Rangoli, [B] Blueprint, [C] Wardrobe)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const anyDrawerOpen =
@@ -326,12 +350,16 @@ export function App() {
         } else if (e.code === 'KeyO') {
           e.preventDefault();
           setSettingsOpen(true);
-        } else if (e.code === 'KeyG') {
+        } else if (e.code === 'KeyR') {
           e.preventDefault();
-          setRangoliOpen(true);
+          setRhythmDiyaTriggerCount((c) => c + 1);
         } else if (e.code === 'KeyF') {
           e.preventDefault();
-          setRhythmOpen(true);
+          setFireworksCount((c) => c + 1);
+        } else if (e.code === 'KeyG') {
+          e.preventDefault();
+          setStampRangoliTriggerCount((c) => c + 1);
+          setRangoliOpen(true);
         } else if (e.code === 'KeyC') {
           e.preventDefault();
           setCharacterOpen(true);
@@ -341,9 +369,6 @@ export function App() {
         } else if (e.code === 'KeyB') {
           e.preventDefault();
           setBlueprintOpen(true);
-        } else if (e.code === 'KeyR') {
-          e.preventDefault();
-          restartRound();
         }
       } else if (gameState === 'paused') {
         if (e.code === 'Escape' || e.code === 'KeyP') {
@@ -368,7 +393,6 @@ export function App() {
     mountedRide,
     hud,
     startGameplay,
-    restartRound,
     toggleCameraMode,
     exitRide,
     setIsMuted,
@@ -404,11 +428,16 @@ export function App() {
         selectedGulal={selectedGulal}
         selectedArsenal={selectedArsenal}
         attire={attire}
+        equippedTrailColorHex={equippedTrailColorHex}
+        equippedShieldSkin={equippedShieldSkin}
         rangoliGrid={rangoliGrid}
         resetCounter={resetCounter}
         fireworksCount={fireworksCount}
         shieldTriggerCount={shieldTriggerCount}
         fireTriggerCount={fireTriggerCount}
+        dashTriggerCount={dashTriggerCount}
+        rhythmDiyaTriggerCount={rhythmDiyaTriggerCount}
+        stampRangoliTriggerCount={stampRangoliTriggerCount}
         karmaOfferingCount={karmaOfferingCount}
         jumpTriggerCount={jumpTriggerCount}
         interactTriggerCount={interactTriggerCount}
@@ -418,10 +447,14 @@ export function App() {
         foodBoostMultiplier={activeFoodBoostMultiplier}
         mobileMoveVec={mobileMoveVec}
         mobileLookDeltaYaw={mobileLookDeltaYaw}
+        onSelectWorld={setActiveWorld}
         onSelectGulal={setSelectedGulal}
         onSelectArsenal={setSelectedArsenal}
         onHudUpdate={(snap) => {
           setHud(snap);
+          if (snap.score > highScore) {
+            updateHighScore(snap.score);
+          }
           if (mobileLookDeltaYaw !== 0) {
             setMobileLookDeltaYaw(0);
           }
@@ -439,7 +472,7 @@ export function App() {
         }
       />
 
-      {/* Title Screen Stage */}
+      {/* Title Screen Stage (Landing Menu State: isPlaying === false) */}
       {gameState === 'title' && (
         <TitleScreen
           activeWorld={activeWorld}
@@ -450,7 +483,7 @@ export function App() {
         />
       )}
 
-      {/* Active Playing HUD */}
+      {/* Active Playing HUD (Active Gameplay State: isPlaying === true) */}
       {gameState !== 'title' && (
         <GameHUD
           hud={{ ...hud, selectedGulal, selectedArsenal }}
@@ -466,6 +499,7 @@ export function App() {
           hasVipPass={hasVipPass}
           foodBoostMultiplier={activeFoodBoostMultiplier}
           foodBoostRemainingSec={activeFoodBoostRemainingSec}
+          onSelectWorld={setActiveWorld}
           onSelectGulal={setSelectedGulal}
           onSelectArsenal={(mode) => {
             setSelectedArsenal(mode);
@@ -481,6 +515,9 @@ export function App() {
           }}
           onTriggerFire={() => setFireTriggerCount((c) => c + 1)}
           onTriggerShield={() => setShieldTriggerCount((c) => c + 1)}
+          onTriggerDash={() => setDashTriggerCount((c) => c + 1)}
+          onTriggerRhythmDiyas={() => setRhythmDiyaTriggerCount((c) => c + 1)}
+          onTriggerStampRangoli={() => setStampRangoliTriggerCount((c) => c + 1)}
           onTriggerKarmaHelp={() => setKarmaOfferingCount((c) => c + 1)}
           onBoardRide={handleBoardRide}
           onExitRide={handleExitRide}

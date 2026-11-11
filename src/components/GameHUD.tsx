@@ -32,12 +32,16 @@ interface GameHUDProps {
   hasVipPass: boolean;
   foodBoostMultiplier: number;
   foodBoostRemainingSec: number;
+  onSelectWorld: (world: FestivalWorldId) => void;
   onSelectGulal: (color: GulalColorId) => void;
   onSelectArsenal: (mode: ArsenalModeId) => void;
   onToggleMute: () => void;
   onToggleCameraMode: () => void;
   onTriggerFire: () => void;
   onTriggerShield: () => void;
+  onTriggerDash: () => void;
+  onTriggerRhythmDiyas: () => void;
+  onTriggerStampRangoli: () => void;
   onTriggerKarmaHelp?: () => void;
   onBoardRide: (rideId: RideId) => void;
   onExitRide: () => void;
@@ -66,11 +70,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   hasVipPass,
   foodBoostMultiplier,
   foodBoostRemainingSec,
+  onSelectWorld,
   onSelectArsenal,
   onToggleMute,
   onToggleCameraMode,
   onTriggerFire,
   onTriggerShield,
+  onTriggerDash,
+  onTriggerRhythmDiyas,
+  onTriggerStampRangoli,
   onTriggerKarmaHelp,
   onBoardRide,
   onExitRide,
@@ -93,9 +101,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   const worldTitle =
     activeWorld === 'holi_braj'
-      ? 'Holi: Braj Courtyard'
+      ? 'World 01: Holi — Braj'
       : activeWorld === 'diwali_ghat'
-      ? 'Diwali: Deepotsav Ghat'
+      ? 'World 02: Diwali — Ghat'
       : 'Mela Central Hub';
 
   const revelerPct = Math.min(
@@ -106,6 +114,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     100,
     Math.round((hud.diyasLit / Math.max(1, hud.targetDiyas)) * 100)
   );
+  const gulalTankPct = Math.min(100, Math.max(0, Math.round(hud.gulalTankPct ?? 100)));
   const karmaPct = Math.min(
     100,
     Math.round(
@@ -135,6 +144,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     <div
       className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3.5 md:p-4"
       aria-label="In-Game Festival HUD"
+      data-testid="active-gameplay-hud"
     >
       {/* Subtle Peripheral Screen Vignette when Spirit Pips are critically low */}
       {hud.spiritPips <= 1 && (
@@ -144,6 +154,48 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             boxShadow: 'inset 0 0 90px rgba(225, 29, 72, 0.55)',
           }}
         />
+      )}
+
+      {/* CENTER-SCREEN DYNAMIC CROSSHAIR + FLOATING HIT/SCORE CALLOUTS */}
+      {!howToPlayOpen && !mountedRide && (
+        <div
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex flex-col items-center gap-1.5"
+          data-testid="center-crosshair-overlay"
+        >
+          <svg
+            viewBox="0 0 36 36"
+            className="w-7 h-7 opacity-80 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]"
+            aria-hidden="true"
+          >
+            <circle
+              cx="18"
+              cy="18"
+              r="9"
+              fill="none"
+              stroke="#FFFBEB"
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+            />
+            <circle
+              cx="18"
+              cy="18"
+              r="2"
+              fill={GULAL_WEAPONS[hud.selectedGulal]?.hex ?? '#F43F5E'}
+            />
+          </svg>
+
+          {/* Floating Hit / Score / Rhythm Callout */}
+          {hud.floatingCallout && (
+            <div
+              key={hud.floatingCallout.id}
+              data-testid="floating-hit-indicator"
+              className="px-3 py-1 rounded-full bg-black/80 border border-white/25 text-xs font-mono font-bold tracking-wide shadow-[0_4px_16px_rgba(0,0,0,0.9)] animate-bounce whitespace-nowrap"
+              style={{ color: hud.floatingCallout.colorHex }}
+            >
+              {hud.floatingCallout.text}
+            </div>
+          )}
+        </div>
       )}
 
       {/* CLEAN SOFT-MAGNET TARGET RETICLE OVERLAY */}
@@ -185,25 +237,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <circle cx="28" cy="28" r="2.5" fill="#FFFBEB" />
           </svg>
 
-          <div
-            className="mt-0.5 px-2 py-0.5 rounded border border-[#FDE68A]/65 text-[10px] font-mono font-bold text-[#FFFBEB] tracking-wide whitespace-nowrap shadow-[0_4px_10px_rgba(0,0,0,0.85)]"
-            style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
-          >
-            {hud.magnetLockInfo.label} · [{activeArsenalSpec.shortLabel.toUpperCase()}]
+          <div className="mt-0.5 px-2 py-0.5 rounded bg-black/85 border border-white/20 text-[10px] font-mono font-bold text-[#FFFBEB] tracking-wide whitespace-nowrap shadow-[0_4px_10px_rgba(0,0,0,0.85)]">
+            {hud.magnetLockInfo.label} · [
+            {activeArsenalSpec.shortLabel.toUpperCase()}]
           </div>
         </div>
       )}
 
-      {/* TOP PERIMETER ROW: Top-Left Player Wallet, Vitality & Goals + Top-Right Radar, FPS, Combo & Settings */}
+      {/* TOP PERIMETER ROW: Top-Left Player Wallet, World Switcher, Gulal Tank & Goals + Top-Right Radar, FPS, Combo & Settings */}
       <div className="flex items-start justify-between gap-3">
-        {/* Top-Left Cluster: Player Avatar, Mela Coins, Reward Tickets, Vitality, Goals & Karma */}
+        {/* Top-Left Cluster: High-Contrast Glassmorphic HUD Panel */}
         <div
-          className="px-3.5 py-2.5 rounded-lg border border-[#F59E0B]/40 shadow-[0_6px_20px_rgba(0,0,0,0.65)] w-full max-w-[345px]"
-          style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+          className="px-3.5 py-2.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 shadow-[0_8px_24px_rgba(0,0,0,0.75)] w-full max-w-[365px]"
+          data-testid="hud-top-left-panel"
         >
-          {/* Player Avatar + Mela Coins + Reward Tickets + Camera Toggle */}
+          {/* Row 1: Player Avatar + Festival Joy / XP Level + Coins + Tickets + [ESC] Menu */}
           <div
-            className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-[#F59E0B]/25"
+            className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/15"
             data-testid="hud-wallet-bar"
           >
             <div className="flex items-center gap-2">
@@ -215,8 +265,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-mono font-bold tracking-wider text-[#FDE68A] uppercase">
+                  <span className="text-[11px] font-mono font-bold tracking-wider text-[#FFFBEB] uppercase">
                     {worldTitle}
+                  </span>
+                  <span
+                    className="px-1.5 py-0.2 rounded bg-[#F59E0B]/20 border border-[#F59E0B]/50 text-[9px] font-mono font-bold text-[#FDE68A]"
+                    data-testid="hud-xp-level"
+                  >
+                    JOY LVL {levelInfo.level}
                   </span>
                   {hasVipPass && (
                     <span className="px-1 py-0.2 rounded bg-[#10B981]/25 border border-[#10B981] text-[9px] font-mono font-bold text-[#6EE7B7]">
@@ -242,9 +298,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
 
             <div className="flex flex-col items-end gap-1 pointer-events-auto">
-              <span className="px-1.5 py-0.5 rounded bg-[#3A1B15] border border-[#F59E0B]/40 text-[9px] font-mono font-bold text-[#FFFBEB]">
-                WAVE {hud.activeWave}/3 · LVL {levelInfo.level}
-              </span>
+              <button
+                type="button"
+                tabIndex={-1}
+                data-testid="hud-esc-menu-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onPauseGame();
+                }}
+                className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 border border-white/20 text-[9px] font-mono font-bold text-[#FFFBEB] cursor-pointer"
+                title="Pause / World Menu [ESC]"
+              >
+                [ESC] Menu
+              </button>
               <button
                 type="button"
                 tabIndex={-1}
@@ -261,9 +327,45 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           </div>
 
-          {/* 6 Discrete Lotus Vitality Pips */}
+          {/* Row 2: Instant World Switcher Pills inside Active HUD */}
+          <div className="flex items-center gap-1 mb-2 pointer-events-auto">
+            {(
+              [
+                { id: 'holi_braj', label: '01: Holi Braj', color: 'bg-[#E11D48]' },
+                {
+                  id: 'diwali_ghat',
+                  label: '02: Diwali Ghat',
+                  color: 'bg-[#D97706]',
+                },
+                { id: 'mela_central', label: 'Mela Hub', color: 'bg-[#0284C7]' },
+              ] as const
+            ).map((w) => {
+              const active = activeWorld === w.id;
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  tabIndex={-1}
+                  data-testid={`hud-world-switch-${w.id}`}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onSelectWorld(w.id);
+                  }}
+                  className={`flex-1 py-1 px-1.5 rounded text-[9px] font-mono font-bold transition-colors cursor-pointer truncate ${
+                    active
+                      ? `${w.color} text-white border border-white/40`
+                      : 'bg-white/5 hover:bg-white/15 text-[#FDE68A]/85 border border-white/10'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Row 3: 6 Discrete Lotus Vitality Pips + Gulal Tank Bar (Refills at Courtyard Color Vats) */}
           <div
-            className="flex items-center justify-between gap-2 mb-2"
+            className="flex items-center justify-between gap-2 mb-1.5"
             role="meter"
             aria-label="Utsav Spirit Vitality"
             aria-valuenow={hud.spiritPips}
@@ -302,7 +404,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
 
             <span
-              className="px-1.5 py-0.5 rounded border border-[#F59E0B]/30 bg-[#1A0B08] text-[9px] font-mono font-semibold text-[#FDE68A] shrink-0"
+              className="px-1.5 py-0.5 rounded border border-white/15 bg-black/50 text-[9px] font-mono font-semibold text-[#FDE68A] shrink-0"
               data-testid="adaptive-difficulty-badge"
               data-adaptive-tier={hud.adaptiveDifficulty.tierId}
             >
@@ -312,23 +414,47 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </span>
           </div>
 
+          {/* Gulal Tank Bar (Refills at Courtyard Color Vats) */}
+          <div className="mb-2" data-testid="gulal-tank-bar">
+            <div className="flex items-center justify-between text-[9px] font-mono mb-0.5">
+              <span className="text-[#FDA4AF] font-bold">
+                GULAL TANK ({GULAL_WEAPONS[hud.selectedGulal]?.name.split(' ')[0]})
+              </span>
+              <span className="text-[#FFFBEB] font-bold tabular-nums">
+                {gulalTankPct}% {gulalTankPct < 30 ? '· Refill at Color Vat!' : ''}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/10">
+              <div
+                className="h-full transition-all duration-150"
+                style={{
+                  width: `${gulalTankPct}%`,
+                  backgroundColor:
+                    GULAL_WEAPONS[hud.selectedGulal]?.hex ?? '#F43F5E',
+                }}
+              />
+            </div>
+          </div>
+
           {foodBoostRemainingSec > 0 && (
             <div className="mb-2 px-2 py-0.5 rounded bg-[#10B981]/20 border border-[#10B981]/50 text-[10px] font-mono font-bold text-[#6EE7B7] flex items-center justify-between">
-              <span>⚡ Chaat/Lassi Speed Boost ({foodBoostMultiplier.toFixed(2)}×)</span>
+              <span>
+                ⚡ Chaat/Lassi Speed Boost ({foodBoostMultiplier.toFixed(2)}×)
+              </span>
               <span>{Math.ceil(foodBoostRemainingSec)}s</span>
             </div>
           )}
 
           {/* 2 Clean, Visual Objective Progress Bars */}
-          <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-[#F59E0B]/20">
+          <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-white/15">
             <div>
               <div className="flex items-center justify-between text-[10px] font-mono text-[#FFF8F0] mb-1">
-                <span>REVELERS</span>
+                <span>REVELERS JOY</span>
                 <span className="font-bold text-[#FDA4AF]">
                   {hud.revelersSplashed}/{hud.targetRevelers}
                 </span>
               </div>
-              <div className="w-full h-1.5 bg-[#120705] rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#E11D48] transition-all duration-200"
                   style={{ width: `${revelerPct}%` }}
@@ -343,7 +469,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   {hud.diyasLit}/{hud.targetDiyas}
                 </span>
               </div>
-              <div className="w-full h-1.5 bg-[#120705] rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-[#F59E0B] transition-all duration-200"
                   style={{ width: `${diyaPct}%` }}
@@ -354,7 +480,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {/* KARMA & DIVINE BLESSINGS TRACKER */}
           <div
-            className="mt-2 pt-1.5 border-t border-[#F59E0B]/20"
+            className="mt-2 pt-1.5 border-t border-white/15"
             data-testid="karma-hud-panel"
             data-karma-points={hud.karma?.karmaPoints ?? 0}
             data-karma-deeds={hud.karma?.totalPositiveDeeds ?? 0}
@@ -383,7 +509,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                       e.currentTarget.blur();
                       onTriggerKarmaHelp();
                     }}
-                    className="px-1.5 py-0.5 rounded bg-[#2A1410] hover:bg-[#3F1E18] border border-[#FBBF24]/50 text-[9px] font-mono font-bold text-[#FDE68A] transition-colors cursor-pointer"
+                    className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 border border-[#FBBF24]/50 text-[9px] font-mono font-bold text-[#FDE68A] transition-colors cursor-pointer"
                   >
                     Seva [T]
                   </button>
@@ -391,7 +517,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
             </div>
 
-            <div className="w-full h-1.5 bg-[#120705] rounded-full overflow-hidden mb-1.5">
+            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden mb-1">
               <div
                 className="h-full transition-all duration-200"
                 style={{
@@ -405,13 +531,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
             {activeDivineBlessingSpec && hud.karma ? (
               <div
-                className="px-2 py-1 rounded border flex flex-col gap-1 transition-all duration-200"
+                className="px-2 py-1 rounded border flex flex-col gap-1 transition-all duration-200 bg-black/80"
                 data-testid="divine-blessing-banner"
                 data-blessing-id={activeDivineBlessingSpec.id}
                 style={{
-                  backgroundColor: 'rgba(18, 10, 7, 0.94)',
                   borderColor: activeDivineBlessingSpec.accentHex,
-                  boxShadow: `0 0 12px ${activeDivineBlessingSpec.accentHex}55`,
                 }}
               >
                 <div className="flex items-center justify-between gap-1 text-[10px] font-mono">
@@ -425,7 +549,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     {hud.karma.blessingRemainingSec.toFixed(1)}s
                   </span>
                 </div>
-                <div className="w-full h-1 bg-[#120705] rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden">
                   <div
                     className="h-full transition-all duration-100"
                     style={{
@@ -436,8 +560,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="text-[9px] font-mono text-[#FDE68A]/75 flex items-center justify-between">
-                <span>Light Diyas or help Elders [E/T] for Divine Blessings</span>
+              <div className="text-[9px] font-mono text-[#FDE68A]/80 flex items-center justify-between">
+                <span>Press [R] Rhythm Diyas or [E] Elders</span>
                 <span className="text-[#FBBF24] font-semibold">
                   {hud.karma?.blessingsGrantedCount ?? 0} Blessed
                 </span>
@@ -466,10 +590,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <div className="flex flex-col items-end gap-1.5">
-            <div
-              className="px-3 py-1.5 rounded-lg border border-[#F59E0B]/40 shadow-[0_6px_20px_rgba(0,0,0,0.65)] flex items-center gap-3"
-              style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
-            >
+            <div className="px-3 py-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 shadow-[0_6px_20px_rgba(0,0,0,0.65)] flex items-center gap-3">
               <div>
                 <div className="text-[9px] font-mono uppercase tracking-wider text-[#FDE68A]">
                   SCORE
@@ -484,7 +605,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
               {showFps && (
                 <div
-                  className="border-l border-[#F59E0B]/25 pl-2.5"
+                  className="border-l border-white/15 pl-2.5"
                   data-testid="hud-fps-counter"
                 >
                   <div className="text-[9px] font-mono uppercase tracking-wider text-[#6EE7B7]">
@@ -497,7 +618,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               )}
             </div>
 
-            {/* Top-Right Utility Controls: Settings [O], Help [?], Mute [M], Pause [P], Restart [R] */}
+            {/* Top-Right Utility Controls: Settings [O], Help [?], Mute [M], Pause [ESC] */}
             <div className="flex items-center gap-1.5 pointer-events-auto">
               <button
                 type="button"
@@ -509,8 +630,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   e.currentTarget.blur();
                   onOpenSettings();
                 }}
-                className="h-9 px-2.5 rounded-lg border border-[#F59E0B]/45 text-[#FDE68A] hover:bg-[#3A1B15] flex items-center justify-center font-mono text-xs font-bold transition-colors cursor-pointer"
-                style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+                className="h-9 px-2.5 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 text-[#FDE68A] hover:bg-white/15 flex items-center justify-center font-mono text-xs font-bold transition-colors cursor-pointer"
               >
                 ⚙ Settings
               </button>
@@ -527,13 +647,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 className={`h-9 px-2 rounded-lg border flex items-center justify-center font-mono text-xs font-bold transition-colors cursor-pointer ${
                   howToPlayOpen
                     ? 'bg-[#E11D48] border-white text-white'
-                    : 'border-[#F59E0B]/45 text-[#FDE68A] hover:bg-[#3A1B15]'
+                    : 'bg-black/70 backdrop-blur-md border-white/15 text-[#FDE68A] hover:bg-white/15'
                 }`}
-                style={
-                  howToPlayOpen
-                    ? undefined
-                    : { backgroundColor: 'rgba(20, 9, 7, 0.92)' }
-                }
               >
                 ? Help
               </button>
@@ -541,14 +656,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <button
                 type="button"
                 tabIndex={-1}
+                data-testid="hud-mute-toggle-btn"
                 aria-label={isMuted ? 'Unmute Audio (M)' : 'Mute Audio (M)'}
                 title="Mute / Unmute Audio [M]"
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onToggleMute();
                 }}
-                className="w-9 h-9 rounded-lg border border-[#F59E0B]/40 flex items-center justify-center text-[#FFFBEB] hover:bg-[#3A1B15] transition-colors cursor-pointer"
-                style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+                className="w-9 h-9 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 flex items-center justify-center text-[#FFFBEB] hover:bg-white/15 transition-colors cursor-pointer"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -574,8 +689,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   e.currentTarget.blur();
                   onPauseGame();
                 }}
-                className="w-9 h-9 rounded-lg border border-[#F59E0B]/40 flex items-center justify-center text-[#FFFBEB] hover:bg-[#3A1B15] transition-colors cursor-pointer"
-                style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+                className="w-9 h-9 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 flex items-center justify-center text-[#FFFBEB] hover:bg-white/15 transition-colors cursor-pointer"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -592,14 +706,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <button
                 type="button"
                 tabIndex={-1}
-                aria-label="Restart Celebration Round (R)"
-                title="Restart Round [R]"
+                aria-label="Restart Celebration Round"
+                title="Restart Round"
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onRestartRound();
                 }}
-                className="w-9 h-9 rounded-lg border border-[#F59E0B]/40 flex items-center justify-center text-[#FFFBEB] hover:bg-[#3A1B15] transition-colors cursor-pointer"
-                style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+                className="w-9 h-9 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 flex items-center justify-center text-[#FFFBEB] hover:bg-white/15 transition-colors cursor-pointer"
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -620,18 +733,17 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {/* VISUAL BEGINNER GUIDE MODAL (Opened via "? Help") */}
       {howToPlayOpen && (
         <div
-          className="pointer-events-auto mx-auto my-auto max-w-xl w-full p-5 rounded-xl border border-[#FBBF24] shadow-[0_16px_45px_rgba(0,0,0,0.92)] text-[#FFFBEB]"
-          style={{ backgroundColor: 'rgba(20, 9, 7, 0.97)' }}
+          className="pointer-events-auto mx-auto my-auto max-w-xl w-full p-5 rounded-xl bg-black/90 backdrop-blur-md border border-white/20 shadow-[0_16px_45px_rgba(0,0,0,0.92)] text-[#FFFBEB]"
           role="dialog"
           aria-label="How to Play Melaverse"
         >
-          <div className="flex items-center justify-between border-b border-[#F59E0B]/30 pb-3 mb-4">
+          <div className="flex items-center justify-between border-b border-white/15 pb-3 mb-4">
             <div>
               <h2 className="text-base font-bold text-[#FDE68A] tracking-wide">
-                HOW TO PLAY — GRAND MELA RIDES, STALLS &amp; 5 WEAPONS
+                HOW TO PLAY — 3 FESTIVAL WORLDS &amp; ACTION HOTBAR
               </h2>
               <p className="text-xs text-[#FFF8F0]/80">
-                WASD to walk · Space to fire · V for 1st/3rd camera · E to ride or play mini-games
+                WASD to walk · Space/LMB Fire · Q/RMB Lotus Shield · Shift Dash · R Rhythm Diyas · F Fireworks · G Rangoli
               </p>
             </div>
             <button
@@ -644,49 +756,43 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 rounded-lg bg-[#2A1410] border border-[#F59E0B]/35 space-y-1">
-              <div className="font-mono font-bold text-[#FBBF24]">
-                1. 5-MODE ARSENAL [1–5]
-              </div>
-              <p className="text-[#FFF8F0]/90 leading-relaxed">
-                Press <strong>[1] Pichkari</strong>, <strong>[2] Punch/Kick</strong>,{' '}
-                <strong>[3] Balloon Throw</strong>, <strong>[4] Hawai Rocket</strong>,
-                or <strong>[5] Sutli Bomb</strong>!
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-[#2A1410] border border-[#F59E0B]/35 space-y-1">
-              <div className="font-mono font-bold text-[#38BDF8]">
-                2. MELA RIDES &amp; STALLS
-              </div>
-              <p className="text-[#FFF8F0]/90 leading-relaxed">
-                Board the <strong>Giant Wheel</strong>, <strong>Carousel</strong>, or{' '}
-                <strong>Columbus Boat</strong> in 1st-person, and win Tickets at{' '}
-                <strong>Balloon Shoot</strong> &amp; <strong>Ring Toss</strong>!
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-[#2A1410] border border-[#F59E0B]/35 space-y-1">
+            <div className="p-3 rounded-lg bg-white/5 border border-white/15 space-y-1">
               <div className="font-mono font-bold text-[#F43F5E]">
-                3. PRIZE SHOP &amp; KARMA
+                1. HOLI — BRAJ
               </div>
               <p className="text-[#FFF8F0]/90 leading-relaxed">
-                Redeem Tickets at the <strong>Prize Shop</strong> for Chaat/Lassi
-                speed boosts &amp; VIP Passes. Light 6 Diyas &amp; splash 12 Revelers!
+                Fire Gulal <strong>[Space/Click]</strong> to splash ground decals &amp; fill NPC Joy Bars. Summon <strong>[Q] Lotus Shield</strong> (3s dome + speed boost on block) &amp; refill at Color Vats!
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-white/5 border border-white/15 space-y-1">
+              <div className="font-mono font-bold text-[#FBBF24]">
+                2. DIWALI — GHAT
+              </div>
+              <p className="text-[#FFF8F0]/90 leading-relaxed">
+                Explore the stepped riverside ghat! Press <strong>[R] Rhythm &amp; Diyas</strong> on the beat to light clay diyas &amp; floating river lamps, and <strong>[F] Fireworks</strong> for multi-stage shells!
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-white/5 border border-white/15 space-y-1">
+              <div className="font-mono font-bold text-[#38BDF8]">
+                3. MELA CENTRAL HUB
+              </div>
+              <p className="text-[#FFF8F0]/90 leading-relaxed">
+                Board the <strong>[E] Giant Wheel</strong> gondola, play Balloon &amp; Ring Toss stalls, and press <strong>[G] Rangoli</strong> to stamp glowing geometric mandalas onto the tiles!
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* BOTTOM PERIMETER: Mounted Ride Banner + Context-Sensitive Prompt + Grand Mela Action Dock */}
+      {/* BOTTOM PERIMETER: Mounted Ride Banner + Context-Sensitive Prompt + Action Hotbar */}
       <div className="flex flex-col items-center gap-2">
         {/* Active 1st-Person Mounted Ride Banner */}
         {mountedRide && (
           <div
             data-testid="mounted-ride-banner"
-            className="pointer-events-auto px-4 py-2 rounded-xl border border-[#FBBF24] shadow-[0_8px_24px_rgba(0,0,0,0.85)] flex items-center gap-3"
-            style={{ backgroundColor: 'rgba(20, 9, 7, 0.96)' }}
+            className="pointer-events-auto px-4 py-2 rounded-xl bg-black/80 backdrop-blur-md border border-[#FBBF24] shadow-[0_8px_24px_rgba(0,0,0,0.85)] flex items-center gap-3"
           >
             <span className="text-xs font-mono font-bold text-[#FDE68A]">
               🎡 Riding{' '}
@@ -716,10 +822,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 onBoardRide(p.targetId as RideId);
               } else if (p.type === 'stall') {
                 onOpenStallModal(p.targetId as MiniGameStallId);
+              } else if (p.type === 'portal') {
+                onSelectWorld(p.targetId as FestivalWorldId);
               }
             }}
-            className="pointer-events-auto px-3.5 py-1.5 rounded-lg border border-[#FBBF24] text-xs font-medium text-[#FFFBEB] shadow-[0_6px_18px_rgba(0,0,0,0.75)] flex items-center gap-2 cursor-pointer hover:bg-[#3A1B15]"
-            style={{ backgroundColor: 'rgba(42, 18, 12, 0.95)' }}
+            className="pointer-events-auto px-3.5 py-1.5 rounded-lg bg-black/80 backdrop-blur-md border border-[#FBBF24] text-xs font-medium text-[#FFFBEB] shadow-[0_6px_18px_rgba(0,0,0,0.75)] flex items-center gap-2 cursor-pointer hover:bg-white/15"
           >
             <span className="px-1.5 py-0.5 rounded bg-[#F59E0B] text-[#180B08] font-mono font-bold text-xs">
               Press E
@@ -736,23 +843,167 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               e.currentTarget.blur();
               setDockCollapsed((prev) => !prev);
             }}
-            className="px-3 py-0.5 rounded-t-md border border-b-0 border-[#F59E0B]/40 text-[10px] font-mono text-[#FDE68A] hover:text-white transition-colors cursor-pointer"
-            style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
+            className="px-3 py-0.5 rounded-t-md bg-black/70 backdrop-blur-md border border-b-0 border-white/15 text-[10px] font-mono text-[#FDE68A] hover:text-white transition-colors cursor-pointer"
           >
             {dockCollapsed
-              ? '▴ Rides, Stalls & Arsenal [H]'
+              ? '▴ Show Action Hotbar & Mela Dock [H]'
               : '▾ Hide Dock [H]'}
           </button>
 
           {!dockCollapsed && (
             <div
-              className="px-2.5 py-1.5 rounded-xl border border-[#F59E0B]/45 shadow-[0_10px_28px_rgba(0,0,0,0.85)] flex flex-col gap-1.5 items-center"
-              style={{ backgroundColor: 'rgba(20, 9, 7, 0.94)' }}
+              className="px-3 py-2 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 shadow-[0_10px_28px_rgba(0,0,0,0.85)] flex flex-col gap-2 items-center"
+              data-testid="bottom-action-hotbar"
             >
-              {/* Row 1: Grand Mela Rides & Mini-Game Stalls Quick Bar */}
-              <div className="flex flex-wrap items-center justify-center gap-1 pb-1 border-b border-[#F59E0B]/20 w-full">
-                <span className="text-[9px] font-mono uppercase tracking-wider text-[#FDE68A]/75 mr-1 hidden sm:inline">
-                  Rides (10🪙):
+              {/* Row 1: Primary 7-Slot Action Hotbar with Cooldown Overlays */}
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                {/* 1. [Space/LMB] Fire Gulal */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-fire-gulal"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerFire();
+                  }}
+                  className="relative overflow-hidden px-3 py-1.5 rounded-lg bg-black/80 hover:bg-[#E11D48]/30 border border-[#FDA4AF]/50 text-xs font-mono font-bold text-white flex items-center gap-1.5 cursor-pointer"
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#E11D48]/35 pointer-events-none transition-all duration-75"
+                    style={{ width: `${100 - hud.cooldownPct}%` }}
+                  />
+                  <span className="relative px-1.5 py-0.5 rounded bg-[#E11D48] text-[10px] text-white font-bold">
+                    Space/LMB
+                  </span>
+                  <span className="relative">Fire Gulal ({gulalTankPct}%)</span>
+                </button>
+
+                {/* 2. [Q/RMB] Lotus Shield (3s active / 6s cooldown) */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-lotus-shield"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerShield();
+                  }}
+                  className={`relative overflow-hidden px-3 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer ${
+                    hud.shieldActive
+                      ? 'bg-[#E11D48]/40 border-[#FBBF24] text-[#FFFBEB] shadow-[0_0_12px_rgba(244,63,94,0.6)]'
+                      : 'bg-black/80 hover:bg-white/10 border-white/20 text-[#FDE68A]'
+                  }`}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#F43F5E]/30 pointer-events-none transition-all duration-75"
+                    style={{ width: `${100 - hud.shieldCooldownPct}%` }}
+                  />
+                  <span className="relative px-1.5 py-0.5 rounded bg-[#F43F5E] text-[10px] text-white font-bold">
+                    Q/RMB
+                  </span>
+                  <span className="relative">
+                    {hud.shieldActive
+                      ? 'Lotus Shield (3s)'
+                      : hud.shieldCooldownPct > 0
+                      ? `Shield (${Math.ceil((hud.shieldCooldownPct / 100) * 6)}s)`
+                      : 'Lotus Shield'}
+                  </span>
+                </button>
+
+                {/* 3. [Shift] Dash */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-dash"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerDash();
+                  }}
+                  className="relative overflow-hidden px-3 py-1.5 rounded-lg bg-black/80 hover:bg-white/10 border border-white/20 text-xs font-mono font-bold text-[#FDE68A] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#F59E0B]/30 pointer-events-none transition-all duration-75"
+                    style={{ width: `${100 - hud.dashCooldownPct}%` }}
+                  />
+                  <span className="relative px-1.5 py-0.5 rounded bg-[#D97706] text-[10px] text-white font-bold">
+                    Shift
+                  </span>
+                  <span className="relative">Dash</span>
+                </button>
+
+                {/* 4. [R] Rhythm & Diyas */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-rhythm-diyas"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerRhythmDiyas();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-black/80 hover:bg-[#F59E0B]/25 border border-[#FBBF24]/50 text-xs font-mono font-bold text-[#FDE68A] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-[#F59E0B] text-[10px] text-[#1C0D0A] font-bold">
+                    R
+                  </span>
+                  <span>Rhythm &amp; Diyas</span>
+                </button>
+
+                {/* 5. [F] Fireworks */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-fireworks"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerFireworks();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-black/80 hover:bg-[#A855F7]/25 border border-[#C084FC]/50 text-xs font-mono font-bold text-[#F3E8FF] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-[#9333EA] text-[10px] text-white font-bold">
+                    F
+                  </span>
+                  <span>Fireworks</span>
+                </button>
+
+                {/* 6. [G] Rangoli (Stamp + Studio) */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-rangoli"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onTriggerStampRangoli();
+                    onOpenRangoli();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-black/80 hover:bg-[#10B981]/25 border border-[#34D399]/50 text-xs font-mono font-bold text-[#D1FAE5] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-[#10B981] text-[10px] text-[#052E16] font-bold">
+                    G
+                  </span>
+                  <span>Rangoli</span>
+                </button>
+
+                {/* 7. [B] Blueprint */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hotbar-blueprint"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenBlueprint();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-black/80 hover:bg-white/15 border border-white/20 text-xs font-mono font-bold text-[#FDE68A] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] text-white font-bold">
+                    B
+                  </span>
+                  <span>Blueprint</span>
+                </button>
+              </div>
+
+              {/* Row 2: Grand Mela Rides, Stalls, Arsenal [1-5] & Wardobe/Atlas Quick Bar */}
+              <div className="flex flex-wrap items-center justify-center gap-1 pt-1.5 border-t border-white/15 w-full">
+                <span className="text-[9px] font-mono uppercase tracking-wider text-[#FDE68A]/75 mr-0.5 hidden sm:inline">
+                  Rides:
                 </span>
                 <button
                   type="button"
@@ -765,10 +1016,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold cursor-pointer transition-colors ${
                     mountedRide === 'giant_wheel'
                       ? 'bg-[#E11D48] border-white text-white'
-                      : 'bg-[#2A1410] hover:bg-[#3F1E18] border-[#F59E0B]/40 text-[#FDE68A]'
+                      : 'bg-black/60 hover:bg-white/15 border-white/15 text-[#FDE68A]'
                   }`}
                 >
-                  🎡 Giant Wheel
+                  🎡 Giant Wheel [E]
                 </button>
                 <button
                   type="button"
@@ -781,7 +1032,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold cursor-pointer transition-colors ${
                     mountedRide === 'carousel'
                       ? 'bg-[#E11D48] border-white text-white'
-                      : 'bg-[#2A1410] hover:bg-[#3F1E18] border-[#F59E0B]/40 text-[#FDE68A]'
+                      : 'bg-black/60 hover:bg-white/15 border-white/15 text-[#FDE68A]'
                   }`}
                 >
                   🎠 Carousel
@@ -797,17 +1048,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   className={`px-2 py-0.5 rounded border text-[10px] font-mono font-bold cursor-pointer transition-colors ${
                     mountedRide === 'columbus_boat'
                       ? 'bg-[#E11D48] border-white text-white'
-                      : 'bg-[#2A1410] hover:bg-[#3F1E18] border-[#F59E0B]/40 text-[#FDE68A]'
+                      : 'bg-black/60 hover:bg-white/15 border-white/15 text-[#FDE68A]'
                   }`}
                 >
                   ⛵ Columbus Boat
                 </button>
 
-                <div className="h-3.5 w-px bg-[#F59E0B]/25 mx-1 hidden sm:block" />
+                <div className="h-3.5 w-px bg-white/15 mx-0.5 hidden sm:block" />
 
-                <span className="text-[9px] font-mono uppercase tracking-wider text-[#38BDF8]/85 mr-1 hidden sm:inline">
-                  Stalls:
-                </span>
                 <button
                   type="button"
                   tabIndex={-1}
@@ -844,159 +1092,83 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 >
                   🎁 Prize Shop ({Math.round(rewardTickets)}🎟️)
                 </button>
-              </div>
 
-              {/* Row 2: 5 Festival Arsenal Buttons + Combat Triggers + Cultural Studios */}
-              <div className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-1">
-                <div className="flex items-center gap-1">
-                  {(
-                    [
-                      'pichkari',
-                      'punch_kick',
-                      'balloon_throw',
-                      'hawai_rocket',
-                      'sutli_bomb',
-                    ] as ArsenalModeId[]
-                  ).map((modeId) => {
-                    const spec = ARSENAL_MODES[modeId];
-                    const isSelected = hud.selectedArsenal === modeId;
-                    return (
-                      <button
-                        key={modeId}
-                        type="button"
-                        tabIndex={-1}
-                        title={`${spec.name}: ${spec.roleClue}`}
-                        onClick={(e) => {
-                          e.currentTarget.blur();
-                          onSelectArsenal(modeId);
-                        }}
-                        className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
-                          isSelected
-                            ? 'border-white bg-[#3A1B15] text-white shadow-[0_0_10px_rgba(251,191,36,0.3)]'
-                            : 'border-[#F59E0B]/25 bg-[#160A07] text-[#FDE68A]/85 hover:border-[#F59E0B]/60'
-                        }`}
+                <div className="h-3.5 w-px bg-white/15 mx-0.5 hidden sm:block" />
+
+                {(
+                  [
+                    'pichkari',
+                    'punch_kick',
+                    'balloon_throw',
+                    'hawai_rocket',
+                    'sutli_bomb',
+                  ] as ArsenalModeId[]
+                ).map((modeId) => {
+                  const spec = ARSENAL_MODES[modeId];
+                  const isSelected = hud.selectedArsenal === modeId;
+                  return (
+                    <button
+                      key={modeId}
+                      type="button"
+                      tabIndex={-1}
+                      title={`${spec.name}: ${spec.roleClue}`}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        onSelectArsenal(modeId);
+                      }}
+                      className={`px-1.5 py-0.5 rounded border text-[10px] font-mono font-semibold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                        isSelected
+                          ? 'border-white bg-white/20 text-white'
+                          : 'border-white/10 bg-black/50 text-[#FDE68A]/80 hover:border-white/30'
+                      }`}
+                    >
+                      <span
+                        className="w-3 h-3 rounded flex items-center justify-center font-mono text-[9px] font-bold text-white shrink-0"
+                        style={{ backgroundColor: spec.hex }}
                       >
-                        <span
-                          className="w-3.5 h-3.5 rounded flex items-center justify-center font-mono text-[10px] font-bold text-white shrink-0"
-                          style={{ backgroundColor: spec.hex }}
-                        >
-                          {spec.key}
-                        </span>
-                        <span className="whitespace-nowrap">
-                          {spec.shortLabel}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        {spec.key}
+                      </span>
+                      <span className="hidden md:inline">{spec.shortLabel}</span>
+                    </button>
+                  );
+                })}
 
-                <div className="h-4 w-px bg-[#F59E0B]/25 hidden sm:block mx-0.5" />
+                <div className="h-3.5 w-px bg-white/15 mx-0.5 hidden sm:block" />
 
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onTriggerFire();
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-[#E11D48] hover:bg-[#BE123C] border border-[#FDA4AF]/60 text-[11px] font-bold text-white shadow-[0_4px_12px_rgba(225,29,72,0.4)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Fire {activeArsenalSpec.shortLabel} [Space]
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onTriggerShield();
-                    }}
-                    className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                      hud.shieldActive
-                        ? 'bg-[#0284C7] border-[#7DD3FC] text-white'
-                        : 'bg-[#172554] hover:bg-[#1E3A8A] border-[#38BDF8]/50 text-[#BAE6FD]'
-                    }`}
-                  >
-                    {hud.shieldActive ? 'Shield ON' : 'Shield [Q]'}
-                  </button>
-                </div>
-
-                <div className="h-4 w-px bg-[#F59E0B]/25 hidden sm:block mx-0.5" />
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenRhythm();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#0284C7] hover:bg-[#0369A1] border border-[#7DD3FC]/40 text-[11px] font-semibold text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Dhol [F]
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenRangoli();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-[11px] font-medium text-[#FFFBEB] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Rangoli [G]
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onTriggerFireworks();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#B45309] hover:bg-[#D97706] border border-[#FDE68A]/50 text-[11px] font-semibold text-[#FFFBEB] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Fireworks
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenCharacter();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-[11px] font-medium text-[#FFFBEB] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Attire [C]
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenWorldAtlas();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-[11px] font-medium text-[#FFFBEB] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Worlds [K]
-                  </button>
-
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={(e) => {
-                      e.currentTarget.blur();
-                      onOpenBlueprint();
-                    }}
-                    className="px-2 py-1 rounded-lg bg-[#2A1410] hover:bg-[#3F1E18] border border-[#F59E0B]/40 text-[11px] font-medium text-[#FDE68A] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    Codex [B]
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  data-testid="hud-open-character-btn"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenCharacter();
+                  }}
+                  className="px-2 py-0.5 rounded bg-black/60 hover:bg-white/15 border border-white/15 text-[10px] font-mono font-bold text-[#FFFBEB] cursor-pointer"
+                >
+                  👕 Attire [C]
+                </button>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenRhythm();
+                  }}
+                  className="px-2 py-0.5 rounded bg-black/60 hover:bg-white/15 border border-white/15 text-[10px] font-mono text-[#BAE6FD] cursor-pointer"
+                >
+                  🥁 Dhol Studio
+                </button>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onOpenWorldAtlas();
+                  }}
+                  className="px-2 py-0.5 rounded bg-black/60 hover:bg-white/15 border border-white/15 text-[10px] font-mono text-[#FDE68A] cursor-pointer"
+                >
+                  🗺️ 12 Worlds [K]
+                </button>
               </div>
             </div>
           )}
