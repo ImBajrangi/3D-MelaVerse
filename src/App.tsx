@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
+  MELA_RIDES,
   createInitialKarmaState,
   type ArsenalModeId,
   type GameState,
@@ -13,9 +14,21 @@ import {
   type CharacterAttirePreset,
   type NpcCharacter,
 } from './game/worldData';
+import type { AssetLoadProgress } from './game/assetLoader';
+import {
+  useMelaStore,
+  type RideId,
+  type MiniGameStallId,
+} from './store/useMelaStore';
 import { MelaverseCanvas, type HudSnapshot } from './game/MelaverseCanvas';
+import { LoadingScreen } from './components/LoadingScreen';
 import { TitleScreen } from './components/TitleScreen';
 import { GameHUD } from './components/GameHUD';
+import { BalloonShootModal } from './components/BalloonShootModal';
+import { RingTossModal } from './components/RingTossModal';
+import { PrizeShopModal } from './components/PrizeShopModal';
+import { SettingsModal } from './components/SettingsModal';
+import { MobileTouchControls } from './components/MobileTouchControls';
 import { RangoliModal } from './components/RangoliModal';
 import { RhythmModal } from './components/RhythmModal';
 import { CharacterModal } from './components/CharacterModal';
@@ -35,6 +48,44 @@ export function App() {
     return 'title';
   });
 
+  // Zustand Persistent Economy, Ride, Stall, Graphics & Camera Store
+  const coins = useMelaStore((s) => s.coins);
+  const tickets = useMelaStore((s) => s.tickets);
+  const totalXp = useMelaStore((s) => s.totalXp);
+  const unlockedStamps = useMelaStore((s) => s.unlockedStamps);
+  const activeFoodBoostMultiplier = useMelaStore(
+    (s) => s.activeFoodBoostMultiplier
+  );
+  const activeFoodBoostRemainingSec = useMelaStore(
+    (s) => s.activeFoodBoostRemainingSec
+  );
+  const hasVipPass = useMelaStore((s) => s.hasVipPass);
+  const graphicsPreset = useMelaStore((s) => s.graphicsPreset);
+  const showFps = useMelaStore((s) => s.showFps);
+  const isMuted = useMelaStore((s) => s.isMuted);
+  const setIsMuted = useMelaStore((s) => s.setIsMuted);
+  const cameraMode = useMelaStore((s) => s.cameraMode);
+  const toggleCameraMode = useMelaStore((s) => s.toggleCameraMode);
+  const mountedRide = useMelaStore((s) => s.mountedRide);
+  const mountRide = useMelaStore((s) => s.mountRide);
+  const exitRide = useMelaStore((s) => s.exitRide);
+  const activeStallModal = useMelaStore((s) => s.activeStallModal);
+  const openStallModal = useMelaStore((s) => s.openStallModal);
+  const mobileControlsVisible = useMelaStore((s) => s.mobileControlsVisible);
+  const addCoins = useMelaStore((s) => s.addCoins);
+  const addXp = useMelaStore((s) => s.addXp);
+  const unlockStamp = useMelaStore((s) => s.unlockStamp);
+  const addTickets = useMelaStore((s) => s.addTickets);
+  const stepFoodBoostTimer = useMelaStore((s) => s.stepFoodBoostTimer);
+
+  const [assetLoadProgress, setAssetLoadProgress] = useState<AssetLoadProgress>({
+    loadedItems: 5,
+    totalItems: 5,
+    progressPct: 100,
+    currentStageLabel: 'Mela 3D World Ready',
+    isComplete: true,
+  });
+
   const [outcome, setOutcome] = useState<GameOutcome>('none');
   const [activeWorld, setActiveWorld] = useState<FestivalWorldId>('holi_braj');
   const [selectedGulal, setSelectedGulal] = useState<GulalColorId>('gulabi');
@@ -47,16 +98,21 @@ export function App() {
   const [shieldTriggerCount, setShieldTriggerCount] = useState<number>(0);
   const [fireTriggerCount, setFireTriggerCount] = useState<number>(0);
   const [karmaOfferingCount, setKarmaOfferingCount] = useState<number>(0);
-
-  // Progression & Currencies
-  const [festivalCoins, setFestivalCoins] = useState<number>(350);
-  const [totalXp, setTotalXp] = useState<number>(280);
-  const [unlockedStamps, setUnlockedStamps] = useState<string[]>([
-    'Brass Braj Pichkari & Bansuri Stamp',
-  ]);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [jumpTriggerCount, setJumpTriggerCount] = useState<number>(0);
+  const [interactTriggerCount, setInteractTriggerCount] = useState<number>(0);
+  const [mobileMoveVec, setMobileMoveVec] = useState<{
+    dx: number;
+    dz: number;
+    sprinting: boolean;
+  }>({
+    dx: 0,
+    dz: 0,
+    sprinting: false,
+  });
+  const [mobileLookDeltaYaw, setMobileLookDeltaYaw] = useState<number>(0);
 
   // Overlay Modals
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [rangoliOpen, setRangoliOpen] = useState<boolean>(false);
   const [rhythmOpen, setRhythmOpen] = useState<boolean>(false);
   const [characterOpen, setCharacterOpen] = useState<boolean>(false);
@@ -87,7 +143,8 @@ export function App() {
     nearbyPrompt: null,
     activeWave: 1,
     activeBlessing: null,
-    objectiveHint: 'Space/Click: Fire · [1-5] Pichkari / Kick / Throw / Rocket / Bomb',
+    objectiveHint:
+      'Space/Click: Fire · [V] 1st/3rd Cam · [E] Ride Jhula / Stalls',
     magnetLockInfo: null,
     adaptiveDifficulty: {
       tierId: 'balanced',
@@ -98,6 +155,11 @@ export function App() {
       maxConcurrentAttackers: 2,
     },
     karma: createInitialKarmaState(),
+    playerX: 0,
+    playerZ: 6.5,
+    playerYaw: Math.PI,
+    fps: 60,
+    crowdPositions: [],
   });
 
   const [finalStats, setFinalStats] = useState({
@@ -109,6 +171,15 @@ export function App() {
     targetDiyas: 6,
     clearTimeSec: 0,
   });
+
+  // Step food boost timer once per second while playing
+  useEffect(() => {
+    if (gameState !== 'playing' || activeFoodBoostRemainingSec <= 0) return;
+    const timer = window.setInterval(() => {
+      stepFoodBoostTimer(1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [gameState, activeFoodBoostRemainingSec, stepFoodBoostTimer]);
 
   // Mirror game state to document.body.dataset.state
   useEffect(() => {
@@ -122,30 +193,59 @@ export function App() {
     }
     setOutcome('none');
     setActiveNpc(null);
+    setSettingsOpen(false);
     setRangoliOpen(false);
     setRhythmOpen(false);
     setCharacterOpen(false);
     setWorldAtlasOpen(false);
     setBlueprintOpen(false);
+    openStallModal(null);
     setGameState('playing');
-  }, []);
+  }, [openStallModal]);
 
   const restartRound = useCallback(() => {
+    exitRide();
+    openStallModal(null);
     setResetCounter((c) => c + 1);
     startGameplay();
-  }, [startGameplay]);
+  }, [exitRide, openStallModal, startGameplay]);
 
   const handleRewardEarned = useCallback(
     (coinsDelta: number, xpDelta: number, stamp?: string) => {
-      setFestivalCoins((c) => c + coinsDelta);
-      setTotalXp((x) => x + xpDelta);
-      if (stamp) {
-        setUnlockedStamps((prev) =>
-          prev.includes(stamp) ? prev : [...prev, stamp]
-        );
+      if (coinsDelta > 0) addCoins(coinsDelta);
+      if (xpDelta > 0) addXp(xpDelta);
+      if (stamp) unlockStamp(stamp);
+    },
+    [addCoins, addXp, unlockStamp]
+  );
+
+  const handleBoardRide = useCallback(
+    (rideId: RideId) => {
+      if (mountedRide === rideId) {
+        exitRide();
+        melaverseAudio.playUiClick();
+        return;
+      }
+      const rideSpec = MELA_RIDES.find((r) => r.id === rideId);
+      const boarded = mountRide(rideId, rideSpec?.ticketCostCoins ?? 10);
+      if (boarded) {
+        melaverseAudio.playCoinCollect();
       }
     },
-    []
+    [mountedRide, exitRide, mountRide]
+  );
+
+  const handleExitRide = useCallback(() => {
+    exitRide();
+    melaverseAudio.playUiClick();
+  }, [exitRide]);
+
+  const handleOpenStallModal = useCallback(
+    (stallId: MiniGameStallId) => {
+      melaverseAudio.playUiClick();
+      openStallModal(stallId);
+    },
+    [openStallModal]
   );
 
   const handleRoundEnd = useCallback(
@@ -159,6 +259,7 @@ export function App() {
       }
     ) => {
       document.exitPointerLock?.();
+      exitRide();
       setOutcome(roundOutcome);
       setFinalStats((prev) => ({
         score: stats.score,
@@ -171,13 +272,15 @@ export function App() {
       }));
       setGameState('gameover');
     },
-    []
+    [exitRide]
   );
 
-  // Global keyboard shortcuts for Title Start, Pause, Fireworks, and Studio Drawers
+  // Global keyboard shortcuts for Title Start, Camera Toggle [V], Settings [O], Pause, and Studios
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const anyDrawerOpen =
+        settingsOpen ||
+        activeStallModal !== null ||
         rangoliOpen ||
         rhythmOpen ||
         characterOpen ||
@@ -201,6 +304,11 @@ export function App() {
       if (anyDrawerOpen) return;
 
       if (gameState === 'playing') {
+        if (e.code === 'Escape' && mountedRide) {
+          e.preventDefault();
+          exitRide();
+          return;
+        }
         if (e.code === 'Escape' || e.code === 'KeyP') {
           e.preventDefault();
           document.exitPointerLock?.();
@@ -211,15 +319,19 @@ export function App() {
             diyasLit: hud.diyasLit,
           }));
           setGameState('paused');
+        } else if (e.code === 'KeyV') {
+          e.preventDefault();
+          melaverseAudio.playUiClick();
+          toggleCameraMode();
+        } else if (e.code === 'KeyO') {
+          e.preventDefault();
+          setSettingsOpen(true);
         } else if (e.code === 'KeyG') {
           e.preventDefault();
           setRangoliOpen(true);
         } else if (e.code === 'KeyF') {
           e.preventDefault();
           setRhythmOpen(true);
-        } else if (e.code === 'KeyV') {
-          e.preventDefault();
-          setFireworksCount((c) => c + 1);
         } else if (e.code === 'KeyC') {
           e.preventDefault();
           setCharacterOpen(true);
@@ -245,18 +357,26 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     gameState,
+    settingsOpen,
+    activeStallModal,
     rangoliOpen,
     rhythmOpen,
     characterOpen,
     worldAtlasOpen,
     blueprintOpen,
     activeNpc,
+    mountedRide,
     hud,
     startGameplay,
     restartRound,
+    toggleCameraMode,
+    exitRide,
+    setIsMuted,
   ]);
 
   const anySubModalOpen =
+    settingsOpen ||
+    activeStallModal !== null ||
     rangoliOpen ||
     rhythmOpen ||
     characterOpen ||
@@ -264,7 +384,7 @@ export function App() {
     blueprintOpen ||
     activeNpc !== null;
 
-  // Pause 3D simulation while a studio modal is open so player cannot be hurt while painting Rangoli or playing Rhythm
+  // Pause 3D combat simulation while a studio or mini-game stall modal is open
   const effectiveCanvasGameState: GameState =
     gameState === 'playing' && anySubModalOpen ? 'paused' : gameState;
 
@@ -274,6 +394,9 @@ export function App() {
       data-focus-fallback="true"
       tabIndex={-1}
     >
+      {/* Themed Mela Asset Loader Overlay */}
+      <LoadingScreen progress={assetLoadProgress} />
+
       {/* Isolated 3D WebGL Viewport Container */}
       <MelaverseCanvas
         gameState={effectiveCanvasGameState}
@@ -287,12 +410,29 @@ export function App() {
         shieldTriggerCount={shieldTriggerCount}
         fireTriggerCount={fireTriggerCount}
         karmaOfferingCount={karmaOfferingCount}
+        jumpTriggerCount={jumpTriggerCount}
+        interactTriggerCount={interactTriggerCount}
+        graphicsPreset={graphicsPreset}
+        cameraMode={cameraMode}
+        mountedRide={mountedRide}
+        foodBoostMultiplier={activeFoodBoostMultiplier}
+        mobileMoveVec={mobileMoveVec}
+        mobileLookDeltaYaw={mobileLookDeltaYaw}
         onSelectGulal={setSelectedGulal}
         onSelectArsenal={setSelectedArsenal}
-        onHudUpdate={setHud}
+        onHudUpdate={(snap) => {
+          setHud(snap);
+          if (mobileLookDeltaYaw !== 0) {
+            setMobileLookDeltaYaw(0);
+          }
+        }}
         onRewardEarned={handleRewardEarned}
         onOpenNpcDialogue={(npc) => setActiveNpc(npc)}
         onOpenWorldAtlas={() => setWorldAtlasOpen(true)}
+        onBoardRide={handleBoardRide}
+        onExitRide={handleExitRide}
+        onOpenStallModal={handleOpenStallModal}
+        onAssetLoadProgress={setAssetLoadProgress}
         onRoundEnd={handleRoundEnd}
         onTogglePause={() =>
           setGameState((prev) => (prev === 'playing' ? 'paused' : 'playing'))
@@ -315,19 +455,37 @@ export function App() {
         <GameHUD
           hud={{ ...hud, selectedGulal, selectedArsenal }}
           activeWorld={activeWorld}
-          festivalCoins={festivalCoins}
+          festivalCoins={coins}
+          rewardTickets={tickets}
           totalXp={totalXp}
           unlockedStampsCount={unlockedStamps.length}
           isMuted={isMuted}
+          showFps={showFps}
+          cameraMode={cameraMode}
+          mountedRide={mountedRide}
+          hasVipPass={hasVipPass}
+          foodBoostMultiplier={activeFoodBoostMultiplier}
+          foodBoostRemainingSec={activeFoodBoostRemainingSec}
           onSelectGulal={setSelectedGulal}
           onSelectArsenal={(mode) => {
             setSelectedArsenal(mode);
             setFireTriggerCount((c) => c + 1);
           }}
-          onToggleMute={() => setIsMuted(melaverseAudio.toggleMute())}
+          onToggleMute={() => {
+            const next = melaverseAudio.toggleMute();
+            setIsMuted(next);
+          }}
+          onToggleCameraMode={() => {
+            melaverseAudio.playUiClick();
+            toggleCameraMode();
+          }}
           onTriggerFire={() => setFireTriggerCount((c) => c + 1)}
           onTriggerShield={() => setShieldTriggerCount((c) => c + 1)}
           onTriggerKarmaHelp={() => setKarmaOfferingCount((c) => c + 1)}
+          onBoardRide={handleBoardRide}
+          onExitRide={handleExitRide}
+          onOpenStallModal={handleOpenStallModal}
+          onOpenSettings={() => setSettingsOpen(true)}
           onOpenRangoli={() => setRangoliOpen(true)}
           onOpenRhythm={() => setRhythmOpen(true)}
           onTriggerFireworks={() => setFireworksCount((c) => c + 1)}
@@ -347,13 +505,79 @@ export function App() {
         />
       )}
 
+      {/* On-Screen Mobile Virtual Joystick & Action Controls */}
+      {gameState === 'playing' && !anySubModalOpen && (
+        <MobileTouchControls
+          visible={mobileControlsVisible}
+          onMoveVector={(dx, dz, sprinting) =>
+            setMobileMoveVec({ dx, dz: -dz, sprinting })
+          }
+          onCameraLookDelta={(deltaYaw) =>
+            setMobileLookDeltaYaw((prev) => prev + deltaYaw)
+          }
+          onJump={() => setJumpTriggerCount((c) => c + 1)}
+          onInteract={() => setInteractTriggerCount((c) => c + 1)}
+          onFire={() => setFireTriggerCount((c) => c + 1)}
+          onToggleCamera={toggleCameraMode}
+        />
+      )}
+
+      {/* Mini-Game 1: Balloon Shooting Stall Modal */}
+      <BalloonShootModal
+        isOpen={activeStallModal === 'balloon_shoot'}
+        onAwardTickets={(ticketsWon, coinsBonus, xpBonus) => {
+          addTickets(ticketsWon);
+          handleRewardEarned(
+            coinsBonus,
+            xpBonus,
+            'Gubbara Nishana Sharpshooter Stamp'
+          );
+          setKarmaOfferingCount((c) => c + 1);
+        }}
+        onClose={() => openStallModal(null)}
+      />
+
+      {/* Mini-Game 2: Physics Ring Toss Stall Modal */}
+      <RingTossModal
+        isOpen={activeStallModal === 'ring_toss'}
+        onAwardTickets={(ticketsWon, coinsBonus, xpBonus) => {
+          addTickets(ticketsWon);
+          handleRewardEarned(
+            coinsBonus,
+            xpBonus,
+            'Challa Pheko Ring Master Stamp'
+          );
+          setKarmaOfferingCount((c) => c + 1);
+        }}
+        onClose={() => openStallModal(null)}
+      />
+
+      {/* Mini-Game 3: Prize Shop & Chaat Bazaar Stall Modal */}
+      <PrizeShopModal
+        isOpen={activeStallModal === 'prize_shop'}
+        onActivatePowerupBlessing={() => {
+          setKarmaOfferingCount((c) => c + 1);
+        }}
+        onClose={() => openStallModal(null)}
+      />
+
+      {/* Graphics Quality, Camera & Spatial Audio Settings Modal */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+
       {/* Interactive Studio & Cultural Modals */}
       <RangoliModal
         isOpen={rangoliOpen}
         grid={rangoliGrid}
         onUpdateGrid={setRangoliGrid}
-        onClaimReward={(coins, xp) => {
-          handleRewardEarned(coins, xp, 'Symmetric Lotus Rangoli Stamp');
+        onClaimReward={(coinsDelta, xpDelta) => {
+          handleRewardEarned(
+            coinsDelta,
+            xpDelta,
+            'Symmetric Lotus Rangoli Stamp'
+          );
           setKarmaOfferingCount((c) => c + 1);
         }}
         onClose={() => setRangoliOpen(false)}
@@ -361,8 +585,8 @@ export function App() {
 
       <RhythmModal
         isOpen={rhythmOpen}
-        onClaimReward={(coins, xp, stamp) => {
-          handleRewardEarned(coins, xp, stamp);
+        onClaimReward={(coinsDelta, xpDelta, stamp) => {
+          handleRewardEarned(coinsDelta, xpDelta, stamp);
           setKarmaOfferingCount((c) => c + 1);
         }}
         onTriggerSkyFireworks={() => setFireworksCount((c) => c + 1)}
@@ -400,6 +624,7 @@ export function App() {
         onResume={() => setGameState('playing')}
         onRestart={restartRound}
         onReturnToTitle={() => {
+          exitRide();
           setOutcome('none');
           setGameState('title');
         }}

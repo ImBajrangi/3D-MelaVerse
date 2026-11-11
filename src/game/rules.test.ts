@@ -21,6 +21,11 @@ import {
   createInitialKarmaState,
   recordKarmaAction,
   stepKarmaState,
+  computeRideCabinCameraPose,
+  evaluateBalloonShotResult,
+  simulateRingTossTrajectory,
+  stepCrowdVisitorAI,
+  computeSpatialAudioGain,
   type ChallengerState,
 } from './rules';
 
@@ -387,6 +392,71 @@ test('recordKarmaAction and stepKarmaState track positive deeds and award Divine
     steppedShield.shieldCooldownMultiplier < 0.5,
     'Brahma Kavach halves shield cooldown'
   );
+});
+
+test('computeRideCabinCameraPose computes distinct 1st-person cabin positions for Giant Wheel, Carousel, and Columbus Boat', () => {
+  const wheel0 = computeRideCabinCameraPose('giant_wheel', 0);
+  const wheel5 = computeRideCabinCameraPose('giant_wheel', 5);
+  assert.notEqual(wheel0.camY, wheel5.camY, 'Giant wheel cabin altitude changes over time');
+
+  const carouselPose = computeRideCabinCameraPose('carousel', 2.5);
+  assert.ok(carouselPose.camY > 1.5 && carouselPose.camY < 5.0);
+
+  const boatPose = computeRideCabinCameraPose('columbus_boat', 1.2);
+  assert.ok(
+    Math.abs(boatPose.swingAngleRad) > 0,
+    'Columbus boat imparts pendulum swing angle'
+  );
+});
+
+test('evaluateBalloonShotResult and simulateRingTossTrajectory award accurate Mini-Game Tickets', () => {
+  const balloonRes = evaluateBalloonShotResult(10, 9, 6);
+  assert.equal(balloonRes.accuracyPct, 90);
+  assert.ok(balloonRes.ticketsAwarded >= 25);
+  assert.equal(balloonRes.gradeLabel, 'SHAHI NISHANEBAZ (SHARPSHOOTER)');
+
+  const ringRes = simulateRingTossTrajectory(
+    0,
+    26,
+    [
+      {
+        id: 'peg_center',
+        label: 'Brass Kalash Peg',
+        x: 0,
+        z: 2.5,
+        ticketValue: 8,
+        accentHex: '#FBBF24',
+      },
+    ],
+    0.55
+  );
+  assert.ok(ringRes.capturedPeg !== null, 'Calibrated ring toss lands on center peg');
+  assert.equal(ringRes.ticketsWon, 8);
+});
+
+test('stepCrowdVisitorAI and computeSpatialAudioGain handle autonomous crowd walking and 3D audio falloff', () => {
+  const steppedVisitor = stepCrowdVisitorAI(
+    {
+      id: 1,
+      x: 15,
+      z: 0,
+      vx: 0,
+      vz: 0,
+      targetX: 15,
+      targetZ: 5,
+      speed: 2.0,
+      stridePhase: 0,
+      paletteIndex: 0,
+    },
+    [{ x: 0, z: 0, radius: 2 }],
+    0.1
+  );
+  assert.ok(steppedVisitor.z > 0, 'Visitor advances toward target waypoint');
+
+  const nearAudio = computeSpatialAudioGain(0, 0, 0, 0, -5, 30);
+  const farAudio = computeSpatialAudioGain(0, 0, 0, 0, -40, 30);
+  assert.ok(nearAudio.gain > 0.6, 'Near sound emitter has strong gain');
+  assert.equal(farAudio.gain, 0, 'Emitter beyond maxDistance has zero gain');
 });
 
 

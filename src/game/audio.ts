@@ -3,13 +3,18 @@
 // pressurized Pichkari water-stream noise, Temple Brass Ghanta bells, Water-Shield parry chimes,
 // and subtle Raag Yaman courtyard harmonic ambiance.
 
+import { computeSpatialAudioGain } from './rules';
+
 class MelaverseAudioEngine {
   private ctx: AudioContext | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private hasUserGesture = false;
   private ambientAccum = 0;
+  private calliopeAccum = 0;
+  private calliopeStep = 0;
   private beatStep = 0;
   public muted = false;
+  public masterVolume = 0.8;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -25,7 +30,9 @@ class MelaverseAudioEngine {
   }
 
   private ensureContext(): AudioContext | null {
-    if (this.muted || !this.hasUserGesture) return null;
+    if (this.muted || this.masterVolume <= 0.001 || !this.hasUserGesture) {
+      return null;
+    }
     if (typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx =
@@ -58,25 +65,93 @@ class MelaverseAudioEngine {
     return baseFreq * variance;
   }
 
+  public setMasterVolume(vol: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, vol));
+  }
+
   public toggleMute(): boolean {
     this.muted = !this.muted;
     return this.muted;
   }
 
-  // Subtle rhythmic courtyard Tala & Tanpura harmonic pulse during active gameplay
-  public stepAmbientCourtyardMusic(dt: number) {
+  // 3D Spatial Audio Manager: Calliope / Carnival Music near Mela Rides + Ambient Courtyard Tala
+  public stepAmbientCourtyardMusic(
+    dt: number,
+    playerX = 0,
+    playerZ = 10,
+    playerYaw = 0
+  ) {
     const ctx = this.ensureContext();
     if (!ctx) return;
+    const vol = this.masterVolume;
 
     this.ambientAccum += dt;
-    // Gently pulse a soft Dholak Tala & Tanpura Sa-Pa note every 0.55s (~109 BPM)
+    this.calliopeAccum += dt;
+
+    // 1. 3D Spatial Calliope / Fairground Organ Melody near Giant Wheel (0, -32) & Carousel (-29, -16)
+    if (this.calliopeAccum >= 0.38) {
+      this.calliopeAccum = 0;
+      const wheelSpatial = computeSpatialAudioGain(
+        playerX,
+        playerZ,
+        playerYaw,
+        0,
+        -32,
+        44
+      );
+      const carouselSpatial = computeSpatialAudioGain(
+        playerX,
+        playerZ,
+        playerYaw,
+        -29,
+        -16,
+        38
+      );
+      const bestSpatial =
+        wheelSpatial.gain >= carouselSpatial.gain
+          ? wheelSpatial
+          : carouselSpatial;
+
+      if (bestSpatial.gain > 0.04) {
+        const now = ctx.currentTime;
+        const calliopeScale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+        const noteFreq =
+          calliopeScale[this.calliopeStep % calliopeScale.length];
+        this.calliopeStep++;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(noteFreq, now);
+
+        const effectiveGain = 0.032 * bestSpatial.gain * vol;
+        gain.gain.setValueAtTime(effectiveGain, now);
+        gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.32);
+
+        if (typeof ctx.createStereoPanner === 'function') {
+          const panner = ctx.createStereoPanner();
+          panner.pan.setValueAtTime(bestSpatial.pan, now);
+          osc.connect(gain);
+          gain.connect(panner);
+          panner.connect(ctx.destination);
+        } else {
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+        }
+
+        osc.start(now);
+        osc.stop(now + 0.34);
+      }
+    }
+
+    // 2. Gently pulse a soft Dholak Tala & Tanpura Sa-Pa note every 0.55s (~109 BPM)
     if (this.ambientAccum >= 0.55) {
       this.ambientAccum = 0;
       const now = ctx.currentTime;
       const step = this.beatStep % 8;
       this.beatStep++;
 
-      // Soft Dholak rhythm pulse on beats 0, 2, 3, 5, 6 (Keherwa Taal: Dha Ge Na Ti Na Ka Dhin Na)
+      // Soft Dholak rhythm pulse on beats 0, 3, 6
       if (step === 0 || step === 3 || step === 6) {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -84,7 +159,7 @@ class MelaverseAudioEngine {
         const baseFreq = step === 0 ? 110 : 146.83;
         osc.frequency.setValueAtTime(baseFreq, now);
         osc.frequency.exponentialRampToValueAtTime(55, now + 0.11);
-        gain.gain.setValueAtTime(0.032, now);
+        gain.gain.setValueAtTime(0.032 * vol, now);
         gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.12);
         osc.connect(gain);
         gain.connect(ctx.destination);
@@ -97,8 +172,8 @@ class MelaverseAudioEngine {
         const droneOsc = ctx.createOscillator();
         const droneGain = ctx.createGain();
         droneOsc.type = 'sine';
-        droneOsc.frequency.setValueAtTime(step === 0 ? 293.66 : 440.0, now); // D4 (Sa) & A4 (Pa)
-        droneGain.gain.setValueAtTime(0.018, now);
+        droneOsc.frequency.setValueAtTime(step === 0 ? 293.66 : 440.0, now);
+        droneGain.gain.setValueAtTime(0.018 * vol, now);
         droneGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.48);
         droneOsc.connect(droneGain);
         droneGain.connect(ctx.destination);
@@ -106,6 +181,103 @@ class MelaverseAudioEngine {
         droneOsc.stop(now + 0.5);
       }
     }
+  }
+
+  // Balloon Shooting Stall: Sharp air-rifle pop + latex balloon burst
+  public playBalloonGunshotPop(isHit = true) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const vol = this.masterVolume;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHit ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(isHit ? 540 : 280, now);
+    osc.frequency.exponentialRampToValueAtTime(isHit ? 95 : 110, now + 0.09);
+    gain.gain.setValueAtTime(0.18 * vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.11);
+
+    if (isHit && this.noiseBuffer) {
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1600, now);
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.14 * vol, now);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(ctx.destination);
+      noise.start(now);
+      noise.stop(now + 0.085);
+    }
+  }
+
+  // Ring Toss Stall: Ring clink on bottle/peg
+  public playRingTossClink(isHit: boolean) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const vol = this.masterVolume;
+
+    const notes = isHit ? [783.99, 1046.5, 1318.5] : [310, 240];
+    notes.forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now + idx * 0.045);
+      gain.gain.setValueAtTime(0.12 * vol, now + idx * 0.045);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.045 + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.045);
+      osc.stop(now + idx * 0.045 + 0.19);
+    });
+  }
+
+  // Coin / Ticket Collect Chime
+  public playCoinCollect() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const vol = this.masterVolume;
+
+    [987.77, 1318.51].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+      gain.gain.setValueAtTime(0.12 * vol, now + idx * 0.055);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.055);
+      osc.stop(now + idx * 0.055 + 0.23);
+    });
+  }
+
+  // Crisp Tactile UI Click
+  public playUiClick() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(680, now);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.03);
+    gain.gain.setValueAtTime(0.07 * this.masterVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.04);
   }
 
   // Light event: soft sandstone footstep + subtle brass ghungroo ankle bell

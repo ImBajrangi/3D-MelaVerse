@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {
   clampDelta,
   calculateSplashScore,
@@ -16,6 +19,10 @@ import {
   createInitialKarmaState,
   recordKarmaAction,
   stepKarmaState,
+  MELA_RIDES,
+  MELA_STALLS,
+  computeRideCabinCameraPose,
+  stepCrowdVisitorAI,
   DIVINE_BLESSINGS,
   GULAL_WEAPONS,
   ARSENAL_MODES,
@@ -30,6 +37,7 @@ import {
   type ScreenShakeState,
   type KarmaState,
   type KarmaActionType,
+  type CrowdVisitorState,
 } from './rules';
 import {
   COURT_NPCS,
@@ -38,6 +46,23 @@ import {
   type NpcCharacter,
 } from './worldData';
 import { melaverseAudio } from './audio';
+import {
+  loadMelaAssetsWithManager,
+  type AssetLoadProgress,
+  type LoadedMelaAssets,
+} from './assetLoader';
+import { MelaPhysicsWorld } from './physicsWorld';
+import {
+  buildMelaRidesAndStalls,
+  type MelaRidesAndStallsRig,
+} from './melaRides';
+import {
+  GRAPHICS_PRESETS,
+  type GraphicsQualityPreset,
+  type CameraPerspectiveMode,
+  type RideId,
+  type MiniGameStallId,
+} from '../store/useMelaStore';
 
 export interface HudSnapshot {
   spiritPips: number;
@@ -59,9 +84,12 @@ export interface HudSnapshot {
   shieldCooldownPct: number;
   shieldActive: boolean;
   nearbyPrompt: {
-    type: 'npc' | 'diya' | 'portal';
+    type: 'npc' | 'diya' | 'portal' | 'ride' | 'stall';
     label: string;
     targetId: string;
+    costCoins?: number;
+    rideId?: RideId;
+    stallId?: MiniGameStallId;
   } | null;
   activeWave: number;
   activeBlessing: string | null;
@@ -76,6 +104,11 @@ export interface HudSnapshot {
   } | null;
   adaptiveDifficulty: AdaptiveDifficultyProfile;
   karma: KarmaState;
+  playerX: number;
+  playerZ: number;
+  playerYaw: number;
+  fps: number;
+  crowdPositions: { x: number; z: number }[];
 }
 
 interface MelaverseCanvasProps {
@@ -90,6 +123,18 @@ interface MelaverseCanvasProps {
   shieldTriggerCount: number;
   fireTriggerCount: number;
   karmaOfferingCount: number;
+  graphicsPreset: GraphicsQualityPreset;
+  cameraMode: CameraPerspectiveMode;
+  mountedRide: RideId | null;
+  foodBoostMultiplier: number;
+  mobileMoveVec: { dx: number; dz: number; sprinting: boolean };
+  mobileLookDeltaYaw: number;
+  jumpTriggerCount: number;
+  interactTriggerCount: number;
+  onAssetLoadProgress: (progress: AssetLoadProgress) => void;
+  onBoardRide: (rideId: RideId, costCoins: number) => void;
+  onExitRide: () => void;
+  onOpenStallModal: (stallId: MiniGameStallId) => void;
   onSelectGulal: (color: GulalColorId) => void;
   onSelectArsenal: (mode: ArsenalModeId) => void;
   onHudUpdate: (snapshot: HudSnapshot) => void;
@@ -457,15 +502,20 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
     })();
 
+    const initialPresetCfg = GRAPHICS_PRESETS[propsRef.current.graphicsPreset];
     const renderer = new THREE.WebGLRenderer({
       antialias: !isSoftwareGl,
       powerPreference: 'high-performance',
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.24;
-    renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = !isSoftwareGl;
+    renderer.toneMappingExposure = 1.22;
+    renderer.setPixelRatio(
+      isSoftwareGl
+        ? 1
+        : Math.min(window.devicePixelRatio, initialPresetCfg.maxPixelRatio)
+    );
+    renderer.shadowMap.enabled = !isSoftwareGl && initialPresetCfg.shadowsEnabled;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const initialRect = container.getBoundingClientRect();
@@ -494,8 +544,46 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 3. Luminous 3-Point Warm/Cool Festival Lighting Rig
-    const hemiLight = new THREE.HemisphereLight(0xfff1f2, 0x451a14, 1.35);
+    // 2B. Post-Processing Pipeline with Selective UnrealBloomPass for Glowing Fairy Lights, Neon Signs & Giant Wheel Bulbs
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(initW, initH),
+      initialPresetCfg.bloomStrength,
+      initialPresetCfg.bloomRadius,
+      initialPresetCfg.bloomThreshold
+    );
+    bloomPass.enabled = !isSoftwareGl && initialPresetCfg.bloomEnabled;
+    composer.addPass(bloomPass);
+
+    let lastAppliedGraphicsPreset: GraphicsQualityPreset =
+      propsRef.current.graphicsPreset;
+
+    const applyGraphicsPresetToPipeline = (preset: GraphicsQualityPreset) => {
+      const cfg = GRAPHICS_PRESETS[preset];
+      renderer.setPixelRatio(
+        isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, cfg.maxPixelRatio)
+      );
+      renderer.shadowMap.enabled = !isSoftwareGl && cfg.shadowsEnabled;
+      if (!isSoftwareGl && keyLight.shadow.mapSize.width !== cfg.shadowMapSize) {
+        keyLight.shadow.mapSize.width = cfg.shadowMapSize;
+        keyLight.shadow.mapSize.height = cfg.shadowMapSize;
+        keyLight.shadow.map?.dispose();
+        keyLight.shadow.map = null;
+      }
+      bloomPass.enabled = !isSoftwareGl && cfg.bloomEnabled;
+      bloomPass.strength = cfg.bloomStrength;
+      bloomPass.radius = cfg.bloomRadius;
+      bloomPass.threshold = cfg.bloomThreshold;
+    };
+
+    // 3. Optimized Single Moon/Evening DirectionalLight + HemisphereLight + AmbientLight
+    const ambientFillLight = new THREE.AmbientLight(0x3b1d2e, 0.55);
+    scene.add(ambientFillLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xfff1f2, 0x451a14, 1.25);
     hemiLight.position.set(0, 40, 0);
     scene.add(hemiLight);
 
@@ -503,23 +591,97 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     keyLight.position.set(22, 34, 18);
     if (!isSoftwareGl) {
       keyLight.castShadow = true;
-      keyLight.shadow.mapSize.width = 1024;
-      keyLight.shadow.mapSize.height = 1024;
-      const d = 30;
+      keyLight.shadow.mapSize.width = initialPresetCfg.shadowMapSize;
+      keyLight.shadow.mapSize.height = initialPresetCfg.shadowMapSize;
+      const d = 38;
       keyLight.shadow.camera.left = -d;
       keyLight.shadow.camera.right = d;
       keyLight.shadow.camera.top = d;
       keyLight.shadow.camera.bottom = -d;
       keyLight.shadow.camera.near = 1;
-      keyLight.shadow.camera.far = 85;
+      keyLight.shadow.camera.far = 95;
       keyLight.shadow.bias = -0.0005;
       keyLight.shadow.normalBias = 0.02;
     }
     scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0xfbbf24, 0.95);
-    rimLight.position.set(-20, 18, -22);
-    scene.add(rimLight);
+    // 3B. Physics-Driven Character Controller (@dimforge/rapier3d-compat Capsule + Ride/Stall Colliders)
+    const melaPhysics = new MelaPhysicsWorld();
+
+    // 3C. Asset Loader (THREE.LoadingManager + GLTF/Draco + Procedural Mela Rides & Stalls)
+    let loadedMelaAssets: LoadedMelaAssets | null = null;
+    let melaRidesRig: MelaRidesAndStallsRig | null = null;
+    void loadMelaAssetsWithManager(renderer, (prog) => {
+      propsRef.current.onAssetLoadProgress(prog);
+    }).then((assets) => {
+      if (isUnmounted) {
+        assets.dispose();
+        return;
+      }
+      loadedMelaAssets = assets;
+      melaRidesRig = buildMelaRidesAndStalls(
+        assets.canopyStripeTex,
+        assets.woodGrainTex
+      );
+      scene.add(melaRidesRig.rootGroup);
+    });
+
+    // 3D. Autonomous AI Crowd Visitors (36 Visitors walking along Mela pathways with obstacle avoidance)
+    const MAX_CROWD_VISITORS = 36;
+    const crowdVisitors: CrowdVisitorState[] = [];
+    const crowdBodyGeo = new THREE.CapsuleGeometry(0.24, 0.62, 6, 10);
+    const crowdBodyMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.55,
+      metalness: 0.1,
+    });
+    const crowdHeadGeo = new THREE.SphereGeometry(0.19, 10, 10);
+    const crowdHeadMat = new THREE.MeshStandardMaterial({
+      color: 0xfde68a,
+      roughness: 0.45,
+      metalness: 0.15,
+    });
+    const crowdBodyInstanced = new THREE.InstancedMesh(
+      crowdBodyGeo,
+      crowdBodyMat,
+      MAX_CROWD_VISITORS
+    );
+    const crowdHeadInstanced = new THREE.InstancedMesh(
+      crowdHeadGeo,
+      crowdHeadMat,
+      MAX_CROWD_VISITORS
+    );
+    crowdBodyInstanced.frustumCulled = false;
+    crowdHeadInstanced.frustumCulled = false;
+
+    const visitorPalette = [
+      0xf43f5e, 0xf59e0b, 0x38bdf8, 0xa855f7, 0x10b981, 0xfb923c,
+    ];
+    for (let i = 0; i < MAX_CROWD_VISITORS; i++) {
+      const angle = (i / MAX_CROWD_VISITORS) * Math.PI * 2;
+      const r = 14.5 + (i % 5) * 3.1;
+      const vx = Math.cos(angle) * r;
+      const vz = Math.sin(angle) * r;
+      const nextAngle = angle + 0.6;
+      crowdVisitors.push({
+        id: i + 1,
+        x: vx,
+        z: vz,
+        vx: 0,
+        vz: 0,
+        targetX: Math.cos(nextAngle) * r,
+        targetZ: Math.sin(nextAngle) * r,
+        speed: 1.65 + (i % 4) * 0.28,
+        stridePhase: i * 0.7,
+        paletteIndex: i % visitorPalette.length,
+      });
+      _dummyColor.setHex(visitorPalette[i % visitorPalette.length]);
+      crowdBodyInstanced.setColorAt(i, _dummyColor);
+    }
+    if (crowdBodyInstanced.instanceColor) {
+      crowdBodyInstanced.instanceColor.needsUpdate = true;
+    }
+    scene.add(crowdBodyInstanced, crowdHeadInstanced);
 
     // 4. Ground & Courtyard Surfaces
     const outerTerrainGeo = new THREE.PlaneGeometry(200, 200);
@@ -1713,11 +1875,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
+        composer.setSize(w, h);
+        bloomPass.resolution.set(w, h);
       }
     });
     resizeObserver.observe(container);
 
-    // 15. Simulation State Variables (Tactile 3-Wave Combat + 6 Unlit Diyas)
+    // 15. Simulation State Variables (Tactile 3-Wave Combat + 6 Unlit Diyas + Grand Mela Rides & Stalls)
     let playerX = 0;
     let playerY = 0;
     let playerZ = 6.5;
@@ -1731,6 +1895,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let coyoteTimer = 0.1;
     let attackBufferTimer = 0;
     let dashBufferTimer = 0;
+    let jumpBufferTimer = 0;
     let weaponCooldown = 0;
     let streamBeamTimer = 0;
     let dashCooldown = 0;
@@ -1753,7 +1918,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let meleeSlashTimer = 0;
     let spinKickTimer = 0;
     let bombShockwaveTimer = 0;
-    let bombShockwaveMaxRadius = 6.5;
 
     const maxSpiritPips = 6;
     let spiritPips = 6;
@@ -1810,6 +1974,9 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let lastShieldTriggerCount = propsRef.current.shieldTriggerCount;
     let lastFireTriggerCount = propsRef.current.fireTriggerCount;
     let lastKarmaOfferingCount = propsRef.current.karmaOfferingCount;
+    let lastJumpTriggerCount = propsRef.current.jumpTriggerCount;
+    let lastInteractTriggerCount = propsRef.current.interactTriggerCount;
+    let smoothedFps = 60;
     let lastHudEmitTime = 0;
     let elapsedTotal = 0;
     let lastFrameTime = performance.now();
@@ -1856,6 +2023,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       playerZ = 6.5;
       playerVy = 0;
       playerYaw = Math.PI;
+      melaPhysics.teleportPlayer(0, 0, 6.5);
       spiritPips = maxSpiritPips;
       spiritTrail = maxSpiritPips;
       spiritRegenAccum = 0;
@@ -2428,12 +2596,24 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     const tick = () => {
       if (isUnmounted) return;
       const now = performance.now();
-      const rawDt = (now - lastFrameTime) / 1000;
+      const rawDt = Math.max(0.001, (now - lastFrameTime) / 1000);
       lastFrameTime = now;
       const dt = clampDelta(rawDt);
       elapsedTotal += dt;
+      smoothedFps = THREE.MathUtils.damp(
+        smoothedFps,
+        Math.min(120, 1 / rawDt),
+        4,
+        dt
+      );
 
       const currentProps = propsRef.current;
+
+      // Apply Graphics Quality Preset changes dynamically
+      if (currentProps.graphicsPreset !== lastAppliedGraphicsPreset) {
+        lastAppliedGraphicsPreset = currentProps.graphicsPreset;
+        applyGraphicsPresetToPipeline(currentProps.graphicsPreset);
+      }
 
       if (currentProps.resetCounter !== lastResetCounter) {
         lastResetCounter = currentProps.resetCounter;
@@ -2459,6 +2639,56 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         lastKarmaOfferingCount = currentProps.karmaOfferingCount;
         applyKarmaDeed('help_npc', '+100 Karma · Elder & Studio Blessing');
       }
+
+      if (currentProps.jumpTriggerCount !== lastJumpTriggerCount) {
+        lastJumpTriggerCount = currentProps.jumpTriggerCount;
+        jumpBufferTimer = 0.18;
+      }
+
+      let interactJustTriggered = false;
+      if (currentProps.interactTriggerCount !== lastInteractTriggerCount) {
+        lastInteractTriggerCount = currentProps.interactTriggerCount;
+        interactJustTriggered = true;
+      }
+
+      // Animate Grand Mela Rides (Giant Wheel, Carousel, Columbus Swinging Boat)
+      melaRidesRig?.updateKinematics(elapsedTotal);
+
+      // Step Autonomous AI Crowd Visitors along Mela walkways
+      const activeCrowdCount =
+        GRAPHICS_PRESETS[currentProps.graphicsPreset].crowdCount;
+      for (let i = 0; i < MAX_CROWD_VISITORS; i++) {
+        if (i >= activeCrowdCount) {
+          _dummyObj.position.set(0, -50, 0);
+          _dummyObj.scale.setScalar(0.001);
+          _dummyObj.updateMatrix();
+          crowdBodyInstanced.setMatrixAt(i, _dummyObj.matrix);
+          crowdHeadInstanced.setMatrixAt(i, _dummyObj.matrix);
+          continue;
+        }
+        const stepped = stepCrowdVisitorAI(
+          crowdVisitors[i],
+          melaPhysics.obstacles,
+          dt
+        );
+        crowdVisitors[i] = stepped;
+        const bob = Math.abs(Math.sin(stepped.stridePhase)) * 0.08;
+        const yaw = Math.atan2(stepped.vx, stepped.vz);
+
+        _dummyObj.position.set(stepped.x, 0.56 + bob, stepped.z);
+        _dummyObj.rotation.set(0, yaw, Math.sin(stepped.stridePhase * 0.5) * 0.05);
+        _dummyObj.scale.setScalar(1);
+        _dummyObj.updateMatrix();
+        crowdBodyInstanced.setMatrixAt(i, _dummyObj.matrix);
+
+        _dummyObj.position.set(stepped.x, 1.18 + bob, stepped.z);
+        _dummyObj.rotation.set(0, yaw, 0);
+        _dummyObj.scale.setScalar(1);
+        _dummyObj.updateMatrix();
+        crowdHeadInstanced.setMatrixAt(i, _dummyObj.matrix);
+      }
+      crowdBodyInstanced.instanceMatrix.needsUpdate = true;
+      crowdHeadInstanced.instanceMatrix.needsUpdate = true;
 
       playerModel.kurtaMat.color.set(currentProps.attire.kurtaHex);
       playerModel.dhotiMat.color.set(currentProps.attire.dhotiHex);
@@ -2607,6 +2837,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         compassGroup.visible = false;
         lockReticleGroup.visible = false;
         magnetTetherMesh.visible = false;
+        playerModel.root.visible = true;
         const orbitAngle = 0.25 + Math.sin(elapsedTotal * 0.28) * 0.5;
         const camRad = 12.6;
         _camTargetPos.set(
@@ -2618,11 +2849,24 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         _camLookAt.set(-1.2, 2.1, -4.5);
         camera.lookAt(_camLookAt);
       } else if (currentProps.gameState === 'playing' && !roundEnded) {
-        compassGroup.visible = true;
         roundElapsedSec += dt;
 
-        // Step subtle courtyard Tala & Tanpura rhythm ambiance
-        melaverseAudio.stepAmbientCourtyardMusic(dt);
+        // Exit ride if Escape pressed while mounted
+        if (
+          currentProps.mountedRide &&
+          (keysJustPressed.has('Escape') || interactJustTriggered)
+        ) {
+          currentProps.onExitRide();
+          interactJustTriggered = false;
+        }
+
+        // Step 3D spatial courtyard & carnival calliope rhythm ambiance
+        melaverseAudio.stepAmbientCourtyardMusic(
+          dt,
+          playerX,
+          playerZ,
+          playerYaw
+        );
 
         if (hitstopTimer > 0) {
           hitstopTimer = Math.max(0, hitstopTimer - dt);
@@ -2659,6 +2903,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
         attackBufferTimer = Math.max(0, attackBufferTimer - dt);
         dashBufferTimer = Math.max(0, dashBufferTimer - dt);
+        jumpBufferTimer = Math.max(0, jumpBufferTimer - dt);
         weaponCooldown = Math.max(0, weaponCooldown - simDt);
         dashCooldown = Math.max(0, dashCooldown - simDt);
         shieldCooldown = Math.max(0, shieldCooldown - simDt);
@@ -2700,15 +2945,20 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             }
           }
 
-          let moveX = 0;
-          let moveZ = 0;
+          // Mobile touch-drag camera look delta
+          if (Math.abs(currentProps.mobileLookDeltaYaw) > 0.0001) {
+            playerYaw += currentProps.mobileLookDeltaYaw;
+          }
+
+          let moveX = currentProps.mobileMoveVec.dx;
+          let moveZ = currentProps.mobileMoveVec.dz;
           if (keysHeld.has('KeyW') || keysHeld.has('ArrowUp')) moveZ -= 1;
           if (keysHeld.has('KeyS') || keysHeld.has('ArrowDown')) moveZ += 1;
           if (keysHeld.has('KeyA') || keysHeld.has('ArrowLeft')) moveX -= 1;
           if (keysHeld.has('KeyD') || keysHeld.has('ArrowRight')) moveX += 1;
 
           let moveLen = Math.hypot(moveX, moveZ);
-          if (moveLen > 0.01) {
+          if (moveLen > 0.01 && !currentProps.mountedRide) {
             // Manual movement overrides any auto-stride
             autoStrideTimer = 0;
             moveX /= moveLen;
@@ -2718,7 +2968,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
             playerYaw += angleDiff * (1 - Math.exp(-14 * simDt));
-          } else if (autoStrideTimer > 0) {
+          } else if (autoStrideTimer > 0 && !currentProps.mountedRide) {
             autoStrideTimer = Math.max(0, autoStrideTimer - simDt);
             const sDx = autoStrideX - playerX;
             const sDz = autoStrideZ - playerZ;
@@ -2730,9 +2980,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             } else {
               autoStrideTimer = 0;
             }
+          } else {
+            moveX = 0;
+            moveZ = 0;
+            moveLen = 0;
           }
 
-          if (dashBufferTimer > 0 && dashCooldown <= 0) {
+          if (dashBufferTimer > 0 && dashCooldown <= 0 && !currentProps.mountedRide) {
             dashBufferTimer = 0;
             dashCooldown = 0.95;
             dashActiveTimer = 0.25;
@@ -2745,8 +2999,15 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             spawnParticleBurst(playerX, 0.4, playerZ, 0xfbbf24, 10, 5.0);
           }
 
+          const isSprinting =
+            keysHeld.has('ShiftLeft') ||
+            keysHeld.has('ShiftRight') ||
+            currentProps.mobileMoveVec.sprinting;
           const speedBoost =
-            (petalAuraTimer > 0 ? 1.22 : 1.0) * karmaStep.speedMultiplier;
+            (petalAuraTimer > 0 ? 1.22 : 1.0) *
+            karmaStep.speedMultiplier *
+            currentProps.foodBoostMultiplier *
+            (isSprinting ? 1.28 : 1.0);
           const baseSpeed = 8.8 * speedBoost;
           let stepVx = moveX * baseSpeed;
           let stepVz = moveZ * baseSpeed;
@@ -2757,40 +3018,40 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             stepVz = dashDirZ * 20.0 * karmaStep.speedMultiplier;
           }
 
-          playerX += stepVx * simDt;
-          playerZ += stepVz * simDt;
-
-          if (playerY <= 0.001) {
-            coyoteTimer = 0.1;
-          } else {
-            coyoteTimer = Math.max(0, coyoteTimer - simDt);
+          const wantsJump = jumpBufferTimer > 0 && coyoteTimer > 0;
+          if (wantsJump) {
+            jumpBufferTimer = 0;
+            melaverseAudio.playDashOrJump();
           }
 
-          if (playerY > 0 || playerVy > 0) {
-            playerY += playerVy * simDt;
-            playerVy -= 18 * simDt;
-            if (playerY <= 0) {
-              playerY = 0;
-              playerVy = 0;
-              scaleSquashX = 1.22;
-              scaleSquashY = 0.78;
+          // Step Physics-Driven Character Controller (@dimforge/rapier3d-compat Capsule + Colliders)
+          if (!currentProps.mountedRide) {
+            const physStep = melaPhysics.stepCharacter({
+              currentX: playerX,
+              currentY: playerY,
+              currentZ: playerZ,
+              velocityY: playerVy,
+              desiredDeltaX: stepVx * simDt,
+              desiredDeltaZ: stepVz * simDt,
+              jumpRequested: wantsJump,
+              dt: simDt,
+              arenaRadius: 36.5,
+            });
+            playerX = physStep.x;
+            playerY = physStep.y;
+            playerZ = physStep.z;
+            playerVy = physStep.velocityY;
+            if (physStep.isGrounded) {
+              coyoteTimer = 0.12;
+            } else {
+              coyoteTimer = Math.max(0, coyoteTimer - simDt);
             }
-          }
-
-          const radial = Math.hypot(playerX, playerZ);
-          if (radial > 25.5) {
-            const s = 25.5 / radial;
-            playerX *= s;
-            playerZ *= s;
-          }
-          if (playerZ < -16.8 && Math.abs(playerX) < 8.2) {
-            playerZ = -16.8;
           }
 
           const frameMoveDist = Math.hypot(stepVx * simDt, stepVz * simDt);
           walkDistAccum += frameMoveDist * 3.4;
           footstepAccum += frameMoveDist;
-          if (footstepAccum >= 2.1 && playerY <= 0.05) {
+          if (footstepAccum >= 2.1 && playerY <= 0.05 && !currentProps.mountedRide) {
             footstepAccum = 0;
             melaverseAudio.playFootstep();
           }
@@ -2868,7 +3129,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           );
 
           compassGroup.rotation.y = magnetState.aimYaw;
-          lockReticleGroup.visible = true;
+          lockReticleGroup.visible = !currentProps.mountedRide;
           lockReticleGroup.position.set(smoothReticleX, 0, smoothReticleZ);
           lockOuterRing.rotation.z =
             elapsedTotal * (isActivelyFiring ? 4.5 : 2.2);
@@ -2887,7 +3148,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           const tetherDx = smoothReticleX - playerX;
           const tetherDz = smoothReticleZ - playerZ;
           const tetherLen = Math.hypot(tetherDx, tetherDz);
-          if (tetherLen > 1.2 && magnetState.magnetStrength > 0.05) {
+          if (
+            !currentProps.mountedRide &&
+            tetherLen > 1.2 &&
+            magnetState.magnetStrength > 0.05
+          ) {
             magnetTetherMesh.visible = true;
             magnetTetherMesh.position.set(
               playerX + tetherDx * 0.5,
@@ -2964,14 +3229,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           }
 
           // Trigger player-initiated Arsenal attack (including instant 1-5 / X keys)
-          if (pendingArsenalKeyAttack !== null && weaponCooldown <= 0) {
-            const modeToFire = pendingArsenalKeyAttack;
-            pendingArsenalKeyAttack = null;
-            attackBufferTimer = 0;
-            fireGulalBurst(modeToFire);
-          } else if (attackBufferTimer > 0 && weaponCooldown <= 0) {
-            attackBufferTimer = 0;
-            fireGulalBurst();
+          if (!currentProps.mountedRide) {
+            if (pendingArsenalKeyAttack !== null && weaponCooldown <= 0) {
+              const modeToFire = pendingArsenalKeyAttack;
+              pendingArsenalKeyAttack = null;
+              attackBufferTimer = 0;
+              fireGulalBurst(modeToFire);
+            } else if (attackBufferTimer > 0 && weaponCooldown <= 0) {
+              attackBufferTimer = 0;
+              fireGulalBurst();
+            }
           }
 
           // Update Special Player Ordnance (Gubbara Balloons, Hawai Rockets, Sutli Bombs)
@@ -3136,7 +3403,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
                 playerX - lb.targetX,
                 playerZ - lb.targetZ
               );
-              if (hitDist <= 2.2 && dashActiveTimer <= 0) {
+              if (hitDist <= 2.2 && dashActiveTimer <= 0 && !currentProps.mountedRide) {
                 if (shieldActiveTimer > 0) {
                   // Deflected by Water-Lotus Shield!
                   melaverseAudio.playShieldParry(true);
@@ -3169,7 +3436,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             lb.mesh.rotation.x += simDt * 6;
           }
 
-          // Step Challenger AI with Adaptive Difficulty (movement speed, reaction frequency & concurrent attack cap)
+          // Step Challenger AI with Adaptive Difficulty
           let activeAttackers = challengerNodes.filter(
             (n) => n.state.state === 'windup' || n.state.state === 'active'
           ).length;
@@ -3238,7 +3505,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               node.model.rightLeg.rotation.x = -cSwing;
 
               if (st.state === 'windup') {
-                // Distinct Windup Fighting Stances per Archetype
                 if (st.archetype === 'sprinter') {
                   node.model.bodyGroup.position.y = -0.18;
                   node.model.bodyGroup.rotation.x = 0.22;
@@ -3246,9 +3512,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
                 } else if (st.archetype === 'lobber') {
                   node.model.bodyGroup.position.y =
                     Math.abs(Math.sin(elapsedTotal * 12)) * 0.15;
-                  node.model.rightArm.rotation.x = -2.35; // Raising Matki overhead!
+                  node.model.rightArm.rotation.x = -2.35;
                 } else {
-                  // Captain beats the Braj Dhol rapidly before charging!
                   node.model.bodyGroup.position.y = 0;
                   node.model.leftArm.rotation.x =
                     -0.7 + Math.sin(elapsedTotal * 28) * 0.55;
@@ -3293,9 +3558,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             }
 
             // Handle Challenger Attack Execution
-            if (res.triggeredAttack) {
+            if (res.triggeredAttack && !currentProps.mountedRide) {
               if (st.archetype === 'lobber') {
-                // Spawn a real 3D parabolic arcing Gulal Balloon toward targetX/targetZ!
                 const bSlot = lobbedBalloons.find((b) => !b.active);
                 if (bSlot) {
                   bSlot.active = true;
@@ -3310,7 +3574,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
                   bSlot.mesh.visible = true;
                 }
               } else if (dashActiveTimer <= 0) {
-                // Sprinter or Captain close-range splash check
                 const hitDist = Math.hypot(
                   playerX - st.targetX,
                   playerZ - st.targetZ
@@ -3318,7 +3581,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
                 const bodyDist = Math.hypot(playerX - st.x, playerZ - st.z);
                 if (hitDist <= 2.15 || bodyDist <= 1.95) {
                   if (shieldActiveTimer > 0) {
-                    // Parried by Water-Lotus Shield! Counter-splash the attacker!
                     melaverseAudio.playShieldParry(true);
                     damageChallengerNode(node, 'neel', 45);
                     spawnParticleBurst(playerX, 1.2, playerZ, 0x38bdf8, 16, 6.5);
@@ -3345,37 +3607,70 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           });
         }
 
-        // Proximity check for NPCs & Unlit Diyas (`[E]` interaction)
+        // Proximity check for Rides, Mini-Game Stalls, NPCs & Unlit Diyas (`[E]` interaction)
         let closestPrompt: HudSnapshot['nearbyPrompt'] = null;
-        let closestDist = 3.5;
+        let closestDist = 4.2;
 
-        for (const d of diyaNodes) {
-          if (!d.lit) {
-            const dist = Math.hypot(playerX - d.x, playerZ - d.z);
+        if (!currentProps.mountedRide) {
+          for (const d of diyaNodes) {
+            if (!d.lit) {
+              const dist = Math.hypot(playerX - d.x, playerZ - d.z);
+              if (dist < closestDist) {
+                closestDist = dist;
+                closestPrompt = {
+                  type: 'diya',
+                  label: 'Light Sacred Brass Diya',
+                  targetId: d.id,
+                };
+              }
+            }
+          }
+
+          for (const n of npcMeshes) {
+            const dist = Math.hypot(playerX - n.npc.x, playerZ - n.npc.z);
             if (dist < closestDist) {
               closestDist = dist;
               closestPrompt = {
-                type: 'diya',
-                label: 'Light Sacred Brass Diya',
-                targetId: d.id,
+                type: 'npc',
+                label: `Talk to ${n.npc.name} (${n.npc.role.split('&')[0].trim()})`,
+                targetId: n.npc.id,
+              };
+            }
+          }
+
+          for (const ride of MELA_RIDES) {
+            const dist = Math.hypot(playerX - ride.x, playerZ - ride.z);
+            if (dist < ride.interactionRadius && dist < closestDist + 3.5) {
+              closestDist = dist;
+              closestPrompt = {
+                type: 'ride',
+                label: `Buy Ticket & Ride ${ride.name} - ${ride.ticketCostCoins} Coins`,
+                targetId: ride.id,
+                costCoins: ride.ticketCostCoins,
+                rideId: ride.id,
+              };
+            }
+          }
+
+          for (const stall of MELA_STALLS) {
+            const dist = Math.hypot(playerX - stall.x, playerZ - stall.z);
+            if (dist < stall.interactionRadius && dist < closestDist + 3.0) {
+              closestDist = dist;
+              closestPrompt = {
+                type: 'stall',
+                label: stall.promptLabel,
+                targetId: stall.id,
+                stallId: stall.id,
               };
             }
           }
         }
 
-        for (const n of npcMeshes) {
-          const dist = Math.hypot(playerX - n.npc.x, playerZ - n.npc.z);
-          if (dist < closestDist) {
-            closestDist = dist;
-            closestPrompt = {
-              type: 'npc',
-              label: `Talk to ${n.npc.name} (${n.npc.role.split('&')[0].trim()})`,
-              targetId: n.npc.id,
-            };
-          }
-        }
-
-        if (keysJustPressed.has('KeyE') && closestPrompt) {
+        if (
+          (keysJustPressed.has('KeyE') || interactJustTriggered) &&
+          closestPrompt &&
+          !currentProps.mountedRide
+        ) {
           if (closestPrompt.type === 'diya') {
             const targetDiya = diyaNodes.find(
               (d) => d.id === closestPrompt!.targetId
@@ -3398,31 +3693,83 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               melaverseAudio.playSacredChime();
               currentProps.onOpenNpcDialogue(foundNpc);
             }
+          } else if (closestPrompt.type === 'ride') {
+            currentProps.onBoardRide(
+              closestPrompt.targetId as RideId,
+              closestPrompt.costCoins ?? 10
+            );
+          } else if (closestPrompt.type === 'stall') {
+            currentProps.onOpenStallModal(
+              closestPrompt.targetId as MiniGameStallId
+            );
           }
         } else if (keysJustPressed.has('KeyT')) {
-          // Direct shortcut [T] to offer greetings / help the nearest courtyard elder for Karma
           applyKarmaDeed('help_npc', '+100 Karma · Elder Blessing');
         }
 
-        // Smooth Third-Person Follow Camera + Harmonic & Directional Combat Screen-Shake
+        // Camera System:
+        // 1) Mounted Ride 1st-Person Cabin Perspective
+        // 2) 1st-Person Player Perspective (`[V]` toggle)
+        // 3) 3rd-Person Follow Camera + Harmonic & Directional Combat Screen-Shake
         const shakeStep = stepScreenShake(screenShakeState, dt);
         screenShakeState = shakeStep.state;
 
-        const desiredCamX = playerX * 0.72 + shakeStep.offsetX * 0.65;
-        const desiredCamY = 7.4 + shakeStep.offsetY * 0.65;
-        const desiredCamZ = playerZ + 11.2 + shakeStep.offsetZ * 0.65;
-        _camTargetPos.set(desiredCamX, desiredCamY, desiredCamZ);
-        camera.position.lerp(_camTargetPos, 1 - Math.exp(-7.5 * dt));
-        camera.position.x += shakeStep.offsetX * 0.35;
-        camera.position.y += shakeStep.offsetY * 0.35;
+        if (currentProps.mountedRide) {
+          playerModel.root.visible = false;
+          compassGroup.visible = false;
+          const cabinPose = computeRideCabinCameraPose(
+            currentProps.mountedRide,
+            elapsedTotal
+          );
+          _camTargetPos.set(cabinPose.camX, cabinPose.camY, cabinPose.camZ);
+          camera.position.lerp(_camTargetPos, 1 - Math.exp(-12 * dt));
+          camera.up.set(0, 1, 0);
+          _camLookAt.set(cabinPose.lookX, cabinPose.lookY, cabinPose.lookZ);
+          camera.lookAt(_camLookAt);
+          if (cabinPose.swingAngleRad !== 0) {
+            camera.rotateZ(cabinPose.swingAngleRad * 0.22);
+          }
+        } else if (currentProps.cameraMode === 'first_person') {
+          playerModel.root.visible = false;
+          compassGroup.visible = true;
+          const eyeX =
+            playerX + Math.sin(playerYaw) * 0.25 + shakeStep.offsetX * 0.4;
+          const eyeY = playerY + 1.65 + shakeStep.offsetY * 0.4;
+          const eyeZ =
+            playerZ + Math.cos(playerYaw) * 0.25 + shakeStep.offsetZ * 0.4;
+          camera.position.set(eyeX, eyeY, eyeZ);
+          camera.up.set(0, 1, 0);
+          _camLookAt.set(
+            eyeX + Math.sin(playerYaw) * 10,
+            eyeY - 0.35,
+            eyeZ + Math.cos(playerYaw) * 10
+          );
+          camera.lookAt(_camLookAt);
+          if (shakeStep.rollRad !== 0) {
+            camera.rotateZ(shakeStep.rollRad * 0.6);
+          }
+        } else {
+          playerModel.root.visible = true;
+          compassGroup.visible = true;
+          const desiredCamX = playerX * 0.72 + shakeStep.offsetX * 0.65;
+          const desiredCamY = 7.4 + shakeStep.offsetY * 0.65;
+          const desiredCamZ = playerZ + 11.2 + shakeStep.offsetZ * 0.65;
+          _camTargetPos.set(desiredCamX, desiredCamY, desiredCamZ);
+          camera.position.lerp(_camTargetPos, 1 - Math.exp(-7.5 * dt));
+          camera.position.x += shakeStep.offsetX * 0.35;
+          camera.position.y += shakeStep.offsetY * 0.35;
 
-        _camLookAt.set(
-          playerX + shakeStep.offsetX,
-          playerY + 1.45 + shakeStep.offsetY,
-          playerZ - 2.6 + shakeStep.offsetZ * 0.5
-        );
-        camera.lookAt(_camLookAt);
-        camera.rotation.z += shakeStep.rollRad;
+          camera.up.set(0, 1, 0);
+          _camLookAt.set(
+            playerX + shakeStep.offsetX,
+            playerY + 1.45 + shakeStep.offsetY,
+            playerZ - 2.6 + shakeStep.offsetZ * 0.5
+          );
+          camera.lookAt(_camLookAt);
+          if (shakeStep.rollRad !== 0) {
+            camera.rotateZ(shakeStep.rollRad);
+          }
+        }
 
         const litCount = diyaNodes.filter((d) => d.lit).length;
         const outcome = evaluateRoundOutcome({
@@ -3456,16 +3803,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             targetRevelers - revelersSplashed
           );
           const activeWave = Math.min(3, Math.floor(revelersSplashed / 4) + 1);
-          const objectiveHint =
-            remainingDiyas > 0 && remainingRevelers > 0
-              ? `Space/Click: Fire Gulal · Match Gem [1-3] · Q: Shield`
-              : remainingDiyas > 0
-              ? `Golden Compass → Ignite ${remainingDiyas} Sacred Diya${
-                  remainingDiyas > 1 ? 's' : ''
-                } (Space / [E])`
-              : `Splash ${remainingRevelers} Reveler${
-                  remainingRevelers > 1 ? 's' : ''
-                } · Match Gem [1-3] for 1.5× Crit!`;
+          const objectiveHint = currentProps.mountedRide
+            ? `Enjoying 1st-Person Mela Ride · Press [Esc] or Exit Ride to return`
+            : remainingDiyas > 0 && remainingRevelers > 0
+            ? `Space/Click: Fire · [V] 1st/3rd Cam · [E] Ride Jhula / Stalls`
+            : remainingDiyas > 0
+            ? `Golden Compass → Ignite ${remainingDiyas} Sacred Diya${
+                remainingDiyas > 1 ? 's' : ''
+              } (Space / [E])`
+            : `Splash ${remainingRevelers} Reveler${
+                remainingRevelers > 1 ? 's' : ''
+              } · Match Gem [1-3] for 1.5× Crit!`;
 
           // Project 3D Soft-Magnet Reticle to 2D Screen Percentage for HUD Overlay
           const activeMagnetCandidates = buildMagnetCandidates();
@@ -3491,7 +3839,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           });
 
           let magnetLockInfo: HudSnapshot['magnetLockInfo'] = null;
-          if (curMagnet.lockedTarget) {
+          if (curMagnet.lockedTarget && !currentProps.mountedRide) {
             _projScreenVec3.set(
               smoothReticleX,
               1.35,
@@ -3555,6 +3903,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             magnetLockInfo,
             adaptiveDifficulty: adaptiveProfile,
             karma: karmaState,
+            playerX,
+            playerZ,
+            playerYaw,
+            fps: Math.round(smoothedFps),
+            crowdPositions: crowdVisitors
+              .slice(0, Math.min(18, activeCrowdCount))
+              .map((v) => ({ x: v.x, z: v.z })),
           });
         }
       }
@@ -3563,7 +3918,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       pointerJustClicked = false;
       rightClickParryJustPressed = false;
 
-      renderer.render(scene, camera);
+      if (!isSoftwareGl && bloomPass.enabled) {
+        composer.render();
+      } else {
+        renderer.render(scene, camera);
+      }
 
       if (isSoftwareGl) {
         afterDraw(tick);
@@ -3596,6 +3955,14 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         'contextmenu',
         handleContextMenu
       );
+      melaPhysics.dispose();
+      melaRidesRig?.dispose();
+      loadedMelaAssets?.dispose();
+      crowdBodyGeo.dispose();
+      crowdBodyMat.dispose();
+      crowdHeadGeo.dispose();
+      crowdHeadMat.dispose();
+      composer.dispose();
       renderer.dispose();
     };
   }, []);
@@ -3608,3 +3975,4 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     />
   );
 };
+

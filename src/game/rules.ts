@@ -1391,6 +1391,387 @@ export function stepKarmaState(
   };
 }
 
+/**
+ * Interactive Mela Rides (Mount & Ride System):
+ * Computes exact delta-time kinematic pose (world position + look target) for the player camera
+ * when mounted on the Giant Wheel (Aakash Jhula), Carousel, or Columbus Swinging Boat.
+ */
+export interface MelaRidePlacement {
+  id: 'giant_wheel' | 'carousel' | 'columbus_boat';
+  name: string;
+  hindiSubtitle: string;
+  x: number;
+  z: number;
+  ticketCostCoins: number;
+  interactionRadius: number;
+}
 
+export const MELA_RIDES: MelaRidePlacement[] = [
+  {
+    id: 'giant_wheel',
+    name: 'Aakash Jhula (Giant Wheel)',
+    hindiSubtitle: 'आकाश झूला · Sky Ferris Wheel',
+    x: 0,
+    z: -32,
+    ticketCostCoins: 10,
+    interactionRadius: 9.5,
+  },
+  {
+    id: 'carousel',
+    name: 'Rajwada Carousel (Merry-Go-Round)',
+    hindiSubtitle: 'राजवाड़ा चकरी · Royal Carousel',
+    x: -29,
+    z: -16,
+    ticketCostCoins: 10,
+    interactionRadius: 7.5,
+  },
+  {
+    id: 'columbus_boat',
+    name: 'Samudra Nauka (Columbus Swinging Boat)',
+    hindiSubtitle: 'समुद्र नौका · Swinging Pirate Ship',
+    x: 29,
+    z: -16,
+    ticketCostCoins: 10,
+    interactionRadius: 8.5,
+  },
+];
 
+export interface MelaStallPlacement {
+  id: 'balloon_shoot' | 'ring_toss' | 'prize_shop';
+  name: string;
+  promptLabel: string;
+  x: number;
+  z: number;
+  interactionRadius: number;
+}
 
+export const MELA_STALLS: MelaStallPlacement[] = [
+  {
+    id: 'balloon_shoot',
+    name: 'Gubbara Nishana (Balloon Shooting Stall)',
+    promptLabel: 'Press E to Play Balloon Shoot (Earn Tickets)',
+    x: -28,
+    z: 14,
+    interactionRadius: 6.5,
+  },
+  {
+    id: 'ring_toss',
+    name: 'Challa Pheko (Ring Toss Stall)',
+    promptLabel: 'Press E to Play Ring Toss (Earn Tickets)',
+    x: 28,
+    z: 14,
+    interactionRadius: 6.5,
+  },
+  {
+    id: 'prize_shop',
+    name: 'Shahi Inam Ghar (Mela Prize & Chaat Shop)',
+    promptLabel: 'Press E to Redeem Tickets at Prize Shop',
+    x: 0,
+    z: 29,
+    interactionRadius: 6.5,
+  },
+];
+
+export function computeRideCabinCameraPose(
+  rideId: 'giant_wheel' | 'carousel' | 'columbus_boat',
+  elapsedSec: number
+): {
+  camX: number;
+  camY: number;
+  camZ: number;
+  lookX: number;
+  lookY: number;
+  lookZ: number;
+  wheelAngleRad: number;
+  swingAngleRad: number;
+} {
+  if (rideId === 'giant_wheel') {
+    // Giant Wheel hub at (0, 12.5, -32), radius 9.2m, rotating in XY plane
+    const angularSpeed = 0.48;
+    const angle = elapsedSec * angularSpeed;
+    const radius = 9.2;
+    const hubX = 0;
+    const hubY = 12.5;
+    const hubZ = -32;
+
+    const cabinX = hubX + Math.cos(angle) * radius;
+    const cabinY = hubY + Math.sin(angle) * radius;
+    const cabinZ = hubZ + 1.1;
+
+    // Look out across the illuminated Mela grounds from the ascending/descending gondola
+    const lookX = cabinX * 0.35 + Math.sin(elapsedSec * 0.25) * 8;
+    const lookY = Math.max(2.2, cabinY * 0.55);
+    const lookZ = 0;
+
+    return {
+      camX: cabinX,
+      camY: cabinY + 0.35,
+      camZ: cabinZ,
+      lookX,
+      lookY,
+      lookZ,
+      wheelAngleRad: angle,
+      swingAngleRad: 0,
+    };
+  }
+
+  if (rideId === 'carousel') {
+    // Carousel center at (-29, 0, -16), radius 4.2m, bobbing horses
+    const angularSpeed = 0.95;
+    const angle = elapsedSec * angularSpeed;
+    const radius = 4.1;
+    const centerX = -29;
+    const centerZ = -16;
+
+    const seatX = centerX + Math.cos(angle) * radius;
+    const seatZ = centerZ + Math.sin(angle) * radius;
+    const bobY = 2.4 + Math.sin(elapsedSec * 3.2) * 0.38;
+
+    // Look tangent forward along carousel rotation and toward the courtyard
+    const tangentX = -Math.sin(angle);
+    const tangentZ = Math.cos(angle);
+
+    return {
+      camX: seatX,
+      camY: bobY,
+      camZ: seatZ,
+      lookX: seatX + tangentX * 10 + 4,
+      lookY: bobY - 0.15,
+      lookZ: seatZ + tangentZ * 10 + 3,
+      wheelAngleRad: angle,
+      swingAngleRad: 0,
+    };
+  }
+
+  // Columbus Swinging Boat at (29, 0, -16), pivot at Y = 11.5m, arm length 7.8m
+  const pivotX = 29;
+  const pivotY = 11.5;
+  const pivotZ = -16;
+  const armLength = 7.6;
+  const maxSwingRad = 0.78; // ~45 degrees pendulum arc
+  const swingAngle = Math.sin(elapsedSec * 1.65) * maxSwingRad;
+
+  // Pendulum swings along Z axis
+  const deckX = pivotX;
+  const deckY = pivotY - Math.cos(swingAngle) * armLength + 1.25;
+  const deckZ = pivotZ + Math.sin(swingAngle) * armLength;
+
+  return {
+    camX: deckX - 0.6,
+    camY: deckY,
+    camZ: deckZ,
+    lookX: 0,
+    lookY: Math.max(2.5, deckY * 0.7),
+    lookZ: deckZ + Math.cos(swingAngle) * 6,
+    wheelAngleRad: 0,
+    swingAngleRad: swingAngle,
+  };
+}
+
+/**
+ * Mini-Game 1: Balloon Shooting Stall Accuracy & Ticket Payout Calculator
+ */
+export function evaluateBalloonShotResult(
+  shotsFired: number,
+  balloonsPopped: number,
+  bestStreak: number
+): {
+  accuracyPct: number;
+  ticketsAwarded: number;
+  coinsBonus: number;
+  gradeLabel: string;
+} {
+  const safeShots = Math.max(1, shotsFired);
+  const clampedHits = Math.max(0, Math.min(shotsFired, balloonsPopped));
+  const accuracyPct =
+    shotsFired === 0 ? 0 : Math.round((clampedHits / safeShots) * 100);
+
+  const baseTickets = clampedHits * 2;
+  const accuracyBonus = accuracyPct >= 80 ? 8 : accuracyPct >= 60 ? 4 : 0;
+  const streakBonus = Math.floor(Math.max(0, bestStreak) / 3) * 2;
+  const ticketsAwarded = Math.max(2, baseTickets + accuracyBonus + streakBonus);
+  const coinsBonus = clampedHits * 5;
+
+  const gradeLabel =
+    accuracyPct >= 85
+      ? 'SHAHI NISHANEBAZ (SHARPSHOOTER)'
+      : accuracyPct >= 60
+      ? 'USTAD SHOOTER'
+      : 'MELA CHALLENGER';
+
+  return {
+    accuracyPct,
+    ticketsAwarded,
+    coinsBonus,
+    gradeLabel,
+  };
+}
+
+/**
+ * Mini-Game 2: Ring Toss Stall Trajectory & Peg Capture Solver
+ */
+export interface RingTossPeg {
+  id: string;
+  label: string;
+  x: number; // meters relative to stall center (-1.8 to +1.8)
+  z: number; // distance from throw line (2.0 to 5.2m)
+  ticketValue: number;
+  accentHex: string;
+}
+
+export function simulateRingTossTrajectory(
+  angleDeg: number, // -35 to +35 degrees
+  powerPct: number, // 10 to 100%
+  pegs: RingTossPeg[],
+  captureRadius = 0.46
+): {
+  landingX: number;
+  landingZ: number;
+  capturedPeg: RingTossPeg | null;
+  ticketsWon: number;
+} {
+  const clampedAngleDeg = Math.max(-40, Math.min(40, angleDeg));
+  const clampedPower = Math.max(5, Math.min(100, powerPct));
+  const angleRad = (clampedAngleDeg * Math.PI) / 180;
+
+  // Map power [5..100] to throw distance [1.6m .. 5.6m]
+  const throwDistance = 1.4 + (clampedPower / 100) * 4.2;
+  const landingX = Number((Math.sin(angleRad) * throwDistance).toFixed(2));
+  const landingZ = Number((Math.cos(angleRad) * throwDistance).toFixed(2));
+
+  let bestPeg: RingTossPeg | null = null;
+  let bestDist = Infinity;
+
+  for (const peg of pegs) {
+    const dist = Math.hypot(landingX - peg.x, landingZ - peg.z);
+    if (dist <= captureRadius && dist < bestDist) {
+      bestDist = dist;
+      bestPeg = peg;
+    }
+  }
+
+  return {
+    landingX,
+    landingZ,
+    capturedPeg: bestPeg,
+    ticketsWon: bestPeg ? bestPeg.ticketValue : 0,
+  };
+}
+
+/**
+ * Autonomous Mela Visitor Crowd AI (30+ visitors walking pathways with obstacle avoidance)
+ */
+export interface CrowdVisitorState {
+  id: number;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  targetX: number;
+  targetZ: number;
+  speed: number;
+  stridePhase: number;
+  paletteIndex: number;
+}
+
+export function stepCrowdVisitorAI(
+  visitor: CrowdVisitorState,
+  obstacles: { x: number; z: number; radius: number }[],
+  dt: number
+): CrowdVisitorState {
+  const safeDt = clampDelta(dt);
+  let dx = visitor.targetX - visitor.x;
+  let dz = visitor.targetZ - visitor.z;
+  const distToTarget = Math.hypot(dx, dz);
+
+  let nextTargetX = visitor.targetX;
+  let nextTargetZ = visitor.targetZ;
+
+  // Pick next waypoint along the Mela promenade ring when reaching current waypoint
+  if (distToTarget < 1.8) {
+    const currentAngle = Math.atan2(visitor.z, visitor.x);
+    const nextAngle = currentAngle + 0.55 + (visitor.id % 3) * 0.18;
+    const promenadeRadius = 14 + (visitor.id % 5) * 2.8;
+    nextTargetX = Math.cos(nextAngle) * promenadeRadius;
+    nextTargetZ = Math.sin(nextAngle) * promenadeRadius;
+    dx = nextTargetX - visitor.x;
+    dz = nextTargetZ - visitor.z;
+  }
+
+  const len = Math.max(0.001, Math.hypot(dx, dz));
+  let steerX = dx / len;
+  let steerZ = dz / len;
+
+  // Obstacle repulsion (rides, stalls, central stage, player)
+  for (const obs of obstacles) {
+    const ox = visitor.x - obs.x;
+    const oz = visitor.z - obs.z;
+    const oDist = Math.hypot(ox, oz);
+    const minSep = obs.radius + 1.2;
+    if (oDist > 0.001 && oDist < minSep) {
+      const push = (minSep - oDist) / minSep;
+      steerX += (ox / oDist) * push * 2.6;
+      steerZ += (oz / oDist) * push * 2.6;
+    }
+  }
+
+  const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
+  const normX = steerX / steerLen;
+  const normZ = steerZ / steerLen;
+
+  const nextVx = normX * visitor.speed;
+  const nextVz = normZ * visitor.speed;
+  let nextX = visitor.x + nextVx * safeDt;
+  let nextZ = visitor.z + nextVz * safeDt;
+
+  // Keep inside Mela perimeter (radius 36m)
+  const radialDist = Math.hypot(nextX, nextZ);
+  if (radialDist > 36) {
+    nextX = (nextX / radialDist) * 36;
+    nextZ = (nextZ / radialDist) * 36;
+  }
+
+  return {
+    ...visitor,
+    x: nextX,
+    z: nextZ,
+    vx: nextVx,
+    vz: nextVz,
+    targetX: nextTargetX,
+    targetZ: nextTargetZ,
+    stridePhase: visitor.stridePhase + visitor.speed * safeDt * 3.4,
+  };
+}
+
+/**
+ * 3D Spatial Audio Distance Attenuation & Stereo Pan Calculator
+ */
+export function computeSpatialAudioGain(
+  listenerX: number,
+  listenerZ: number,
+  listenerYaw: number,
+  sourceX: number,
+  sourceZ: number,
+  maxDistance = 42
+): { gain: number; pan: number; distance: number } {
+  const dx = sourceX - listenerX;
+  const dz = sourceZ - listenerZ;
+  const distance = Math.hypot(dx, dz);
+  if (distance >= maxDistance) {
+    return { gain: 0, pan: 0, distance };
+  }
+
+  // Inverse-square inspired smooth falloff
+  const normalized = 1 - distance / maxDistance;
+  const gain = Number((normalized * normalized).toFixed(3));
+
+  // Right vector of listener from listenerYaw
+  const rightX = Math.cos(listenerYaw);
+  const rightZ = -Math.sin(listenerYaw);
+  const dirX = distance > 0.001 ? dx / distance : 0;
+  const dirZ = distance > 0.001 ? dz / distance : 0;
+  const rawPan = dirX * rightX + dirZ * rightZ;
+  const pan = Number(Math.max(-1, Math.min(1, rawPan)).toFixed(2));
+
+  return { gain, pan, distance };
+}
