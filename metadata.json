@@ -1,0 +1,6 @@
+{
+  "name": "MELAVERSE — 3D Indian Festival Universe",
+  "description": "An interactive 3D Indian festival adventure and cultural celebration game featuring Holi in Braj, Diwali Ghats, Mela Central, Rangoli Studio, and a complete 9-deliverable AAA studio blueprint.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

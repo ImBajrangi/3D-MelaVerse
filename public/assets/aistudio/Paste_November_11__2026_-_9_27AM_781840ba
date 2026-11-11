@@ -1,0 +1,1090 @@
+# MASTER GAME DEVELOPMENT PROMPT — MELAVERSE
+## A Realistic 3D Indian Festival-Based Multiplayer Game
+
+**Project Name:** MELAVERSE  
+**Tagline:** Celebrate Traditions. Explore India. Create Memories.  
+**Platforms:** PC (Windows), Android and iOS  
+**Game Engine:** Unreal Engine 5  
+**Visual Style:** Highly immersive, realistic 3D  
+**Game Genre:** Open-ended Festival Adventure + Cultural Life Simulation + Multiplayer Mini-games  
+**Game Modes:** Single-player + Online Multiplayer  
+
+---
+
+# 1. YOUR ROLE
+
+Act as a complete AAA game development studio consisting of:
+
+- Senior Game Director
+- Principal Unreal Engine Architect
+- Senior C++ Gameplay Engineer
+- 3D Environment and World Designer
+- Character Modelling and Animation Specialist
+- Multiplayer Networking Engineer
+- Backend and Database Architect
+- Game UI/UX Designer
+- Mobile Performance Engineer
+- Game Economy Designer
+- Cultural Research and Authenticity Consultant
+- Game QA and Security Engineer
+
+Your responsibility is to conceptualize, design and technically plan a complete, scalable, production-ready game called **MELAVERSE**.
+
+Do not approach this as a basic prototype or a collection of mini-games.
+
+Think like a professional game studio designing a long-term, cross-platform gaming product.
+
+The game should have a distinct Indian identity, extraordinary environments, engaging gameplay, realistic characters, culturally authentic experiences and a sustainable multiplayer ecosystem.
+
+# 2. CORE GAME VISION
+
+MELAVERSE is a realistic 3D gaming universe inspired by Indian cultural traditions, Hindu festivals, regional architecture, traditional activities, local environments, celebrations and everyday Indian life.
+
+The central concept:
+
+Every festival has its own beautifully designed 3D world.
+
+Players can enter these worlds, explore locations, interact with characters, participate in activities, complete missions, experience traditional celebrations, play with friends and create their own memories.
+
+The game should make players feel familiar with its environments, traditions, activities and atmosphere.
+
+It should feel like a living virtual destination rather than a linear story-based game.
+
+### Core principles
+
+1. Immersive Indian environments.
+2. Detailed and realistic 3D graphics.
+3. Authentic Hindu festival experiences.
+4. Meaningful exploration.
+5. Fun and replayable mini-games.
+6. Social interaction and multiplayer.
+7. Long-term player progression.
+8. Seasonal updates and festival events.
+9. Cross-platform account synchronization.
+10. Strong mobile and PC performance.
+
+# 3. FESTIVAL-BASED WORLD DESIGN
+
+Build a collection of separate, interconnected-by-navigation festival destinations.
+
+Each destination must have its own:
+
+- Unique geographical identity.
+- Architecture and environment.
+- NPC characters.
+- Traditional clothing.
+- Music and ambient sounds.
+- Festival decorations.
+- Food experiences.
+- Festival-specific activities.
+- Story missions.
+- Mini-games.
+- Collectibles.
+- Multiplayer events.
+- Regional cultural details.
+
+### Proposed festival destinations
+
+**WORLD 01 — HOLI: BRAJ**
+
+Location inspiration: Mathura, Vrindavan, Barsana and Nandgaon.
+
+Experiences:
+- Traditional Holi celebrations.
+- Lathmar Holi-inspired cultural activities.
+- Color-based multiplayer challenges.
+- Flower Holi experiences.
+- Dhol and traditional music.
+- Temple-town exploration.
+- Traditional sweets and food stalls.
+- Narrow Braj streets and traditional architecture.
+- Colorful community gatherings.
+- Festival-specific missions.
+
+This should be the first flagship destination.
+
+**WORLD 02 — DIWALI**
+
+Location inspiration: An Indian heritage town with traditional architecture.
+
+Experiences:
+- Lighting diyas.
+- Rangoli creation.
+- Home decoration.
+- Traditional sweet preparation.
+- Decorative lighting challenges.
+- Community celebrations.
+- Festival markets.
+- Night-time exploration.
+
+**WORLD 03 — NAVRATRI: GUJARAT**
+
+Location inspiration: Gujarat.
+
+Experiences:
+- Garba dance.
+- Dandiya competitions.
+- Traditional clothing.
+- Rhythm-based challenges.
+- Community dance grounds.
+- Festival decorations.
+- Music and celebration areas.
+
+**WORLD 04 — GANESH CHATURTHI: MAHARASHTRA**
+
+Location inspiration: Maharashtra.
+
+Experiences:
+- Decorative pandals.
+- Modak preparation.
+- Cultural exhibitions.
+- Community activities.
+- Eco-friendly decoration challenges.
+- Festival exploration.
+
+**WORLD 05 — JANMASHTAMI: VRINDAVAN AND MATHURA**
+
+Location inspiration: Braj region.
+
+Experiences:
+- Vrindavan exploration.
+- Krishna-themed cultural environments.
+- Jhanki decoration.
+- Matki-based challenges.
+- Traditional music and devotional atmosphere.
+- Temple-town architecture.
+- Flower decorations.
+- Cultural storytelling.
+
+Respect religious representations and design them with cultural sensitivity.
+
+**WORLD 06 — RAM NAVAMI: AYODHYA**
+
+Location inspiration: Ayodhya.
+
+Experiences:
+- Heritage architecture.
+- Cultural storytelling.
+- Decorative city exploration.
+- Traditional activities.
+- Educational missions.
+- Community celebration.
+
+**WORLD 07 — DURGA PUJA: BENGAL**
+
+Location inspiration: Kolkata and West Bengal.
+
+Experiences:
+- Pandal exploration.
+- Traditional artistic decorations.
+- Cultural performances.
+- Dhak-inspired music experiences.
+- Creative decoration challenges.
+- Festival photography missions.
+
+**WORLD 08 — ONAM: KERALA**
+
+Location inspiration: Kerala.
+
+Experiences:
+- Pookalam creation.
+- Traditional boat race challenges.
+- Kerala architecture.
+- Traditional cooking.
+- Cultural performances.
+- Harvest-themed activities.
+
+**WORLD 09 — PONGAL: TAMIL NADU**
+
+Location inspiration: Tamil Nadu.
+
+Experiences:
+- Pongal cooking.
+- Harvest activities.
+- Traditional village environments.
+- Kolam competitions.
+- Bullock cart-themed cultural experiences.
+- Community activities.
+
+Represent traditional animals and activities with appropriate care.
+
+**WORLD 10 — MAKAR SANKRANTI**
+
+Location inspiration: Traditional Indian rooftops and festive towns.
+
+Experiences:
+- Kite flying.
+- Kite-making activities.
+- Multiplayer flying competitions.
+- Traditional foods.
+- Rooftop exploration.
+- Seasonal decorations.
+
+**WORLD 11 — CHHATH PUJA**
+
+Location inspiration: Bihar and the Ganga riverbank.
+
+Experiences:
+- Beautiful riverside environments.
+- Ghat exploration.
+- Traditional decorations.
+- Cultural storytelling.
+- Community preparations.
+- Respectful environmental interaction.
+
+**WORLD 12 — MAHA SHIVRATRI**
+
+Location inspiration: Varanasi and traditional Shiva temple surroundings.
+
+Experiences:
+- Temple-town exploration.
+- Spiritual storytelling.
+- Traditional music.
+- Decorative environments.
+- Educational activities.
+- Cultural collections.
+
+Additional destinations can include Rath Yatra, Dussehra, Vasant Panchami, Teej, Raksha Bandhan, Govardhan Puja, Bhai Dooj, Karwa Chauth, Akshaya Tritiya and other regional Hindu festivals.
+
+Design festival dates using regionally appropriate Hindu calendars. Support date variations between regions and lunar-calendar calculations.
+
+# 4. WORLD HUB AND NAVIGATION
+
+Create a permanent central hub named:
+
+**MELA CENTRAL**
+
+This is the main destination after the player logs in.
+
+The central hub should include:
+
+- World selection area.
+- Player meeting space.
+- Friends and social area.
+- Character customization.
+- Clothing and cosmetics marketplace.
+- Daily mission board.
+- Festival calendar.
+- Leaderboards.
+- Player profile.
+- Collection room.
+- Event announcements.
+- Travel portal.
+
+### World navigation
+
+Players select a festival destination from an immersive 3D world-selection interface.
+
+Every destination should be independently loadable.
+
+Keep the destination available for exploration even after the festival's live event has ended.
+
+Use reusable gameplay systems and shared character assets, while allowing each destination to maintain a distinct visual identity.
+
+# 5. GAMEPLAY SYSTEMS
+
+Develop two primary game modes.
+
+## A. Single-player mode
+
+Players should be able to:
+
+- Explore destinations.
+- Complete story missions.
+- Interact with NPCs.
+- Discover hidden locations.
+- Collect cultural objects.
+- Complete challenges.
+- Play against AI.
+- Discover traditions through interactive storytelling.
+- Earn progression rewards.
+- Customize their characters.
+
+Create optional exploration objectives and replayable missions.
+
+## B. Multiplayer mode
+
+Implement:
+
+- Public multiplayer sessions.
+- Private friend sessions.
+- Party formation.
+- Friend invitations.
+- Cooperative missions.
+- Competitive mini-games.
+- Community festival challenges.
+- Player interactions.
+- Shared festival experiences.
+
+Initial multiplayer targets:
+
+- Private party: 2–8 players.
+- Mini-games: 2–8 players.
+- Cooperative activities: 4–8 players.
+- Public world instances: initially 12–16 players.
+
+Design a scalable architecture that can accommodate higher capacities after performance testing.
+
+Use authoritative dedicated servers.
+
+All important gameplay actions, currency transactions, rewards and match results must be validated server-side.
+
+# 6. MINI-GAME SYSTEM
+
+Create a reusable mini-game framework.
+
+Permanent activities:
+
+1. Gully Cricket.
+2. Kite Flying.
+3. Carrom.
+4. Kabaddi.
+5. Traditional Indian Cooking.
+6. Rangoli Creation.
+7. Farming.
+8. Treasure Hunting.
+9. Mela Challenges.
+10. Traditional Dance Games.
+
+Festival-specific activities:
+
+- Holi color challenges.
+- Diwali rangoli and decoration.
+- Garba rhythm competitions.
+- Dandiya challenges.
+- Modak preparation.
+- Pookalam design competitions.
+- Pongal cooking challenges.
+- Boat race challenges.
+- Kite flying competitions.
+- Cultural exploration missions.
+
+Each mini-game should have:
+
+- Clear gameplay rules.
+- Beginner-friendly tutorials.
+- Single-player support where practical.
+- Multiplayer support where practical.
+- Difficulty levels.
+- Reward configuration.
+- Score calculation.
+- Replayability.
+- Anti-cheat validation.
+
+Aim for short activities of approximately 2–5 minutes, with longer cooperative events as optional experiences.
+
+# 7. PLAYER CHARACTER SYSTEM
+
+Create a highly detailed realistic 3D character system.
+
+Players should be able to customize:
+
+- Face.
+- Skin tone.
+- Eyes.
+- Hair.
+- Facial hair.
+- Body proportions.
+- Clothing.
+- Footwear.
+- Accessories.
+- Traditional outfits.
+- Hairstyles.
+- Emotes.
+- Walking animations.
+- Dance animations.
+
+Create a modular character customization architecture.
+
+Clothing should support different regional styles and festival collections.
+
+Characters should look realistic but remain visually optimized for mobile.
+
+Implement:
+- Skeletal meshes.
+- Modular clothing.
+- Animation state machines.
+- IK where appropriate.
+- Facial animation.
+- LOD systems.
+- Optimized materials.
+- Animation reuse.
+
+# 8. WORLD INTERACTION SYSTEM
+
+Make the environment interactive.
+
+Players should be able to:
+
+- Enter shops.
+- Talk to NPCs.
+- Buy permitted cosmetic objects.
+- Interact with festival decorations.
+- Participate in activities.
+- Visit selected buildings.
+- Sit at designated locations.
+- Interact with vehicles where gameplay requires them.
+- Take in-game photographs.
+- Collect objects.
+- Visit friends' homes.
+
+Build a reusable interaction framework with proximity detection, contextual interaction prompts and server validation.
+
+# 9. PLAYER PROGRESSION AND REWARDS
+
+Implement a layered progression system.
+
+### Player Level
+
+Players earn XP from missions, exploration and activities.
+
+### Cultural Passport
+
+Every destination has a collection of cultural stamps and collectibles.
+
+### Festival Progress
+
+Players earn seasonal rewards through festival missions.
+
+### Home Progression
+
+Players unlock furniture, decorations and personalization options.
+
+### Achievements
+
+Examples:
+- First Festival Visit.
+- Master Kite Flyer.
+- Rangoli Artist.
+- Braj Explorer.
+- Mini-game Champion.
+- Community Helper.
+
+### Reward currencies
+
+Use:
+- Experience Points.
+- Festival Coins.
+- Cosmetic Collectibles.
+
+Keep the economy transparent and cosmetic-focused.
+
+Avoid systems that create unfair competitive advantages through purchases.
+
+# 10. DAILY AND SEASONAL ENGAGEMENT
+
+Create an ongoing content system.
+
+Daily:
+- Daily missions.
+- Mini-game challenges.
+- Exploration tasks.
+- NPC requests.
+
+Weekly:
+- Multiplayer competitions.
+- Special challenges.
+- Community goals.
+
+Monthly:
+- World activities.
+- New collectibles.
+- Limited-time missions.
+
+Festival periods:
+- Special destination decorations.
+- Seasonal quests.
+- Community challenges.
+- Festival reward tracks.
+- Special animations and clothing.
+
+Create a community-wide progression system in which players contribute to shared goals.
+
+Example: All players work together to decorate a festival square or complete a large community art installation.
+
+Previous festival memories and earned collectibles must remain part of the player's account.
+
+# 11. REALISTIC 3D ART DIRECTION
+
+This is a crucial part of MELAVERSE.
+
+The game must have highly immersive, realistic 3D environments.
+
+Do not use a toy-like, low-poly or generic cartoon appearance.
+
+### Visual expectations
+
+Environment:
+- Detailed Indian architectural structures.
+- Realistic materials.
+- Natural lighting.
+- High-quality vegetation.
+- PBR texturing.
+- Detailed streets.
+- Realistic surfaces.
+- Atmospheric fog.
+- Natural weather.
+- Dynamic lighting where supported.
+- High-quality environmental animation.
+
+Characters:
+- Realistic human proportions.
+- Detailed facial features.
+- Natural body movements.
+- Authentic clothing materials.
+- Realistic character animation.
+
+Atmosphere:
+- Beautiful Indian streets.
+- Traditional houses.
+- Temple architecture.
+- Festival decorations.
+- Markets.
+- Courtyards.
+- Ghats.
+- Gardens.
+- Traditional music environments.
+- Night-time illumination.
+
+### Visual reference direction
+
+Target the visual quality of a modern immersive Unreal Engine game, while maintaining the ability to scale graphics down for mobile.
+
+Use:
+- High-quality PBR materials.
+- Nanite where appropriate and supported.
+- Lumen for suitable PC configurations.
+- Baked and optimized lighting alternatives for mobile.
+- Level of Detail.
+- Hierarchical Level of Detail.
+- World Partition when appropriate.
+- Asset streaming.
+- Platform-specific rendering profiles.
+
+Do not make high-end PC rendering features a mandatory requirement for Android and iOS.
+
+# 12. TECHNOLOGY STACK
+
+Use the following proposed architecture.
+
+### Game Engine
+
+Unreal Engine 5.
+
+Languages:
+- C++ for gameplay and foundational systems.
+- Blueprints for visual scripting and rapid iteration.
+
+### 3D Production
+
+- Blender.
+- Unreal Engine modelling and environment tools.
+- Compatible animation and motion-capture workflows.
+
+### Backend
+
+- Supabase Auth.
+- Supabase PostgreSQL.
+- TypeScript / Node.js backend services.
+- Supabase Storage.
+- Supabase Realtime for appropriate social features.
+
+### Multiplayer
+
+- Unreal Engine dedicated servers.
+- Unreal network replication.
+- Server-authoritative gameplay.
+- Session allocation.
+- Matchmaking.
+- Dedicated server hosting, initially evaluate Amazon GameLift Servers.
+
+### Monitoring
+
+- Unreal Insights.
+- Crash reporting.
+- Server metrics.
+- Application performance monitoring.
+- Backend monitoring.
+
+### Version Control
+
+- Git with Git LFS for suitable project assets.
+- Perforce for larger team workflows.
+
+Verify the actual compatibility of all tools, plugins and engine versions before production implementation.
+
+# 13. BACKEND AND DATABASE ARCHITECTURE
+
+Design a secure, scalable PostgreSQL data model.
+
+Proposed tables:
+
+1. players
+2. player_profiles
+3. platform_accounts
+4. player_inventory
+5. player_currencies
+6. festival_worlds
+7. festival_events
+8. player_quests
+9. player_achievements
+10. player_collections
+11. player_homes
+12. friends
+13. parties
+14. matchmaking_sessions
+15. match_history
+16. player_notifications
+17. daily_challenges
+18. seasonal_rewards
+
+Define:
+- Primary keys.
+- Foreign keys.
+- Indexes.
+- Constraints.
+- Relationships.
+- RLS policies.
+- Server-side transactional operations.
+- Data retention.
+- Backup and recovery.
+
+Never trust clients with currency, inventory or match-result authority.
+
+Separate the real-time gameplay state from persistent account data.
+
+Provide a complete database relationship diagram and migration strategy.
+
+# 14. CROSS-PLATFORM DEVELOPMENT
+
+The same game project must support:
+
+PC:
+- Keyboard and mouse.
+- Controller.
+- Configurable graphics.
+- 60 FPS target.
+- High-quality graphics options.
+
+Android:
+- Touch controls.
+- Mobile UI.
+- Adaptive resolution.
+- Graphics quality profiles.
+- Battery and thermal management.
+- Memory-efficient assets.
+
+iOS:
+- Touch controls.
+- Adaptive rendering.
+- Platform-compliant distribution.
+- Optimized memory and battery usage.
+
+Implement a unified account system.
+
+Players must be able to access their unlocked cosmetics, achievements, progression and inventory across platforms.
+
+Design input-aware matchmaking and fair control systems.
+
+# 15. UI/UX DESIGN
+
+Create a premium, immersive user interface.
+
+### Main menu
+
+- Play.
+- Continue.
+- Festival Worlds.
+- Multiplayer.
+- Character.
+- Inventory.
+- Friends.
+- Missions.
+- Collections.
+- Settings.
+
+### In-game HUD
+
+Keep it minimal.
+
+Include:
+- Player status.
+- Mini-map where useful.
+- Quest information.
+- Interaction prompts.
+- Multiplayer indicators.
+- Navigation.
+- Notifications.
+
+### Art direction
+
+The interface should be contemporary, readable and culturally inspired.
+
+Avoid excessive gradients, unnecessary decorative effects, crowded layouts and generic mobile-game aesthetics.
+
+Create a responsive UI system that adapts to mobile, PC and controller navigation.
+
+# 16. AUDIO AND MUSIC SYSTEM
+
+Design a dedicated environmental audio architecture.
+
+Include:
+
+- Regional ambient sounds.
+- Festival-specific music.
+- Instrumental soundscapes.
+- Character voice interactions.
+- NPC conversations.
+- Environmental sound effects.
+- Footsteps.
+- Crowd ambience.
+- Mini-game sound effects.
+- Interactive audio transitions.
+
+Use properly licensed or commissioned music and sound assets.
+
+Support volume controls, audio accessibility and dynamic sound mixing.
+
+# 17. CULTURAL AUTHENTICITY
+
+Cultural authenticity is a fundamental requirement.
+
+Every destination must be researched carefully.
+
+Consider:
+- Regional traditions.
+- Local architecture.
+- Appropriate clothing.
+- Traditional food.
+- Music and instruments.
+- Local dialects.
+- Community practices.
+- Religious sensitivities.
+- Regional differences in celebration.
+
+Avoid generic representations of Indian culture.
+
+Do not invent historical or religious facts.
+
+Use credible sources and regional cultural reviewers for important representations.
+
+Religious and sacred elements must be represented respectfully, with educational and immersive experiences prioritized over trivialized competitive mechanics.
+
+# 18. SECURITY AND PLAYER SAFETY
+
+Implement:
+
+- Secure account management.
+- Server-authoritative multiplayer.
+- Anti-cheat checks.
+- Input validation.
+- Rate limiting.
+- Secure reward transactions.
+- Inventory verification.
+- Player reporting.
+- Player blocking.
+- Moderated communication.
+- Session protection.
+- Data backup.
+- Secure API access.
+
+Design age-appropriate social interaction and privacy controls.
+
+Keep unrestricted voice chat out of the initial MVP.
+
+# 19. MVP DEVELOPMENT STRATEGY
+
+Do not attempt to develop all destinations simultaneously.
+
+Build one excellent vertical slice first.
+
+### MVP destination
+
+Holi – Braj.
+
+### MVP scope
+
+1. Unreal Engine project setup.
+2. Mela Central lobby.
+3. One detailed Holi Braj environment.
+4. Third-person character controller.
+5. Character customization.
+6. NPC interactions.
+7. One single-player mission.
+8. Holi Color Challenge.
+9. Rangoli Studio.
+10. Basic multiplayer parties.
+11. Dedicated server integration.
+12. Player profiles.
+13. Inventory.
+14. Progression and rewards.
+15. PC, Android and iOS test builds.
+
+### Exclude from initial MVP
+
+Do not build:
+- All twelve worlds.
+- Massive open-world streaming infrastructure.
+- Complex player trading.
+- Unrestricted voice chat.
+- Large-scale multiplayer events.
+- User-generated map creation.
+
+Build these only after validating the foundational experience.
+
+# 20. DEVELOPMENT ROADMAP
+
+Prepare a realistic 9–12 month roadmap.
+
+Phase 1: Pre-production.
+- Complete GDD.
+- Technical architecture.
+- Game prototype plan.
+- Asset pipeline.
+- Environment references.
+
+Phase 2: Core prototype.
+- Movement.
+- Camera.
+- Interaction.
+- Basic environment.
+- Multiplayer test.
+- Backend connection.
+
+Phase 3: Vertical slice.
+- Complete first environment.
+- Character system.
+- First mini-game.
+- Mission framework.
+- Dedicated server.
+
+Phase 4: MVP production.
+- Second mini-game.
+- Progression.
+- Social features.
+- Inventory.
+- Additional content.
+
+Phase 5: Cross-platform testing.
+- PC.
+- Android.
+- iOS.
+- Performance.
+- Multiplayer stress testing.
+
+Phase 6: Closed beta and launch.
+- QA.
+- Balancing.
+- Player feedback.
+- Security review.
+- Release preparation.
+
+For each phase, provide:
+- Tasks.
+- Dependencies.
+- Deliverables.
+- Technical risks.
+- Acceptance criteria.
+- Required team roles.
+- Estimated effort.
+
+Do not present estimated delivery dates as guaranteed.
+
+# 21. QUALITY AND PERFORMANCE TARGETS
+
+Establish target performance profiles.
+
+Proposed initial targets:
+
+- Entry-level supported mobile: 30 FPS.
+- Mid/high-end mobile: 45–60 FPS.
+- PC: 60 FPS or higher.
+- Initial multiplayer instance: 8 players.
+- Larger world instances: introduced after load testing.
+- Crash-free sessions target: 99% or higher.
+- Persistent cross-platform progression.
+- Server-validated important transactions.
+
+Create a device testing matrix and test with real Android and iOS devices.
+
+Optimize memory, draw calls, texture sizes, materials, animations, lighting, network updates and asset loading.
+
+# 22. MONETIZATION AND LONG-TERM BUSINESS MODEL
+
+Design a fair free-to-play model.
+
+Potential revenue:
+- Cosmetic outfits.
+- Character customization.
+- Decorative home items.
+- Optional festival passes.
+- Cosmetic collections.
+- Non-competitive personalization options.
+
+Do not sell competitive advantages.
+
+Provide transparent purchase flows and appropriate parental and spending controls.
+
+# 23. REQUIRED OUTPUT FROM YOU
+
+I want you to produce a comprehensive professional game development blueprint in the following order.
+
+**DELIVERABLE 1 — GAME DESIGN DOCUMENT**
+
+Define:
+- Game vision.
+- Genre.
+- Target audience.
+- Game mechanics.
+- Player experience.
+- Gameplay loop.
+- Game modes.
+- World structure.
+- Festival experiences.
+- Progression.
+- Economy.
+- Engagement.
+- Long-term content strategy.
+
+**DELIVERABLE 2 — WORLD DESIGN DOCUMENT**
+
+Create a detailed design for every proposed destination.
+
+For each world explain:
+- Map layout.
+- Important landmarks.
+- Environment composition.
+- Activities.
+- NPCs.
+- Missions.
+- Mini-games.
+- Collectibles.
+- Ambient audio.
+- Multiplayer activities.
+
+**DELIVERABLE 3 — TECHNICAL ARCHITECTURE**
+
+Provide:
+- Complete system architecture.
+- Client/server architecture.
+- Unreal project architecture.
+- Multiplayer flow.
+- Matchmaking flow.
+- Backend integration.
+- Database schema.
+- API structure.
+- Security.
+- Deployment architecture.
+
+Use Mermaid diagrams wherever useful.
+
+**DELIVERABLE 4 — UNREAL ENGINE PROJECT STRUCTURE**
+
+Provide:
+- Folder hierarchy.
+- C++ module organization.
+- Blueprint organization.
+- Character architecture.
+- World architecture.
+- Mini-game framework.
+- UI architecture.
+- Multiplayer architecture.
+- Asset management.
+- Testing organization.
+
+**DELIVERABLE 5 — ART AND ASSET PIPELINE**
+
+Define:
+- Character modelling workflow.
+- Environment modelling workflow.
+- Material standards.
+- Lighting workflow.
+- Animation pipeline.
+- Audio workflow.
+- LOD strategy.
+- Mobile asset optimization.
+- Asset naming conventions.
+
+**DELIVERABLE 6 — DATABASE AND BACKEND**
+
+Provide:
+- PostgreSQL ER diagram.
+- Table definitions.
+- RLS security.
+- API endpoints.
+- Authentication flows.
+- Inventory transactions.
+- Reward validation.
+- Match-result handling.
+- Cross-platform synchronization.
+
+**DELIVERABLE 7 — MVP IMPLEMENTATION PLAN**
+
+Break the first playable version into development sprints.
+
+For each sprint provide:
+- Objective.
+- Implementation tasks.
+- Required C++ classes.
+- Required Blueprints.
+- Backend requirements.
+- Assets.
+- Acceptance criteria.
+- Testing requirements.
+
+**DELIVERABLE 8 — DEVELOPMENT ROADMAP**
+
+Produce:
+- 9–12 month plan.
+- Team requirements.
+- Task dependencies.
+- Milestones.
+- Risk assessment.
+- Budget categories.
+- Technical decision checkpoints.
+
+**DELIVERABLE 9 — PRODUCT AND LAUNCH STRATEGY**
+
+Define:
+- Target audience.
+- Platform release strategy.
+- Closed beta.
+- Community building.
+- Seasonal content plan.
+- Analytics.
+- Retention metrics.
+- Monetization strategy.
+
+---
+
+# 24. IMPORTANT EXECUTION INSTRUCTIONS
+
+Follow these instructions carefully.
+
+1. Be technically precise. Do not make generic recommendations.
+2. Clearly distinguish confirmed technical capabilities from assumptions.
+3. Verify engine and plugin compatibility against their official documentation.
+4. Avoid overengineering the MVP.
+5. Prioritize mobile performance from day one.
+6. Design multiplayer with server authority.
+7. Use reusable and modular gameplay systems.
+8. Keep festival worlds independently deployable and maintainable.
+9. Design for long-term content updates.
+10. Maintain realistic development estimates.
+11. Provide implementation-level detail, not just conceptual ideas.
+12. Treat cultural authenticity as an engineering and design requirement.
+13. Do not invent sources, statistics, benchmarks or technical capabilities.
+14. Clearly identify unresolved decisions and their consequences.
+15. Do not attempt to implement the entire game in one code dump.
+
+**MOST IMPORTANT:**
+
+First produce the complete MELAVERSE Game Design Document, system architecture and MVP technical specification.
+
+Then break the implementation into independently testable development phases.
+
+Every major system must be designed with future expansion in mind, but the first release must remain achievable.
+
+The final product should feel like a premium, immersive Indian cultural gaming universe with beautiful realistic environments, engaging activities, memorable characters and a strong multiplayer experience.
+
+**Build MELAVERSE as a game people want to return to throughout the entire year.**
