@@ -1,8 +1,15 @@
 import React from 'react';
-import type { FestivalWorldId } from '../game/rules';
+import type {
+  FestivalWorldId,
+  DayNightAtmosphereProfile,
+  DayNightCycleMode,
+} from '../game/rules';
 
 interface TitleScreenProps {
   activeWorld: FestivalWorldId;
+  dayNight: DayNightAtmosphereProfile;
+  dayNightMode: DayNightCycleMode;
+  onChangeDayNightMode: (mode: DayNightCycleMode) => void;
   onStartGame: () => void;
   onOpenCharacterModal: () => void;
   onOpenBlueprintModal: () => void;
@@ -46,6 +53,9 @@ const WORLD_PREVIEW_DETAILS: Record<
 
 export const TitleScreen: React.FC<TitleScreenProps> = ({
   activeWorld,
+  dayNight,
+  dayNightMode,
+  onChangeDayNightMode,
   onStartGame,
   onOpenCharacterModal,
   onOpenBlueprintModal,
@@ -59,10 +69,10 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
       className="fixed inset-0 z-20 flex flex-col justify-between p-8 bg-gradient-to-r from-black/80 via-black/40 to-transparent pointer-events-none"
       data-testid="landing-menu-overlay"
     >
-      {/* Top-Left World Stage Switcher (Aligned to 32px / p-8 outer screen margin grid) */}
+      {/* Top Row: Left World Stage Switcher + Right Prahara Day-Night & Zone Atmosphere Switcher */}
       <div className="flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
         <div
-          className="inline-flex items-center gap-1 p-1.5 rounded-xl border border-white/15 bg-black/75 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.65)]"
+          className="inline-flex items-center gap-1 p-1.5 rounded-xl border border-white/15 bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.65)]"
           role="group"
           aria-label="Live 3D Stage Destination Preview"
         >
@@ -102,6 +112,60 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           >
             Mela Central Hub
           </button>
+        </div>
+
+        {/* Dynamic Day-Night Cycle & Zone Atmosphere Selector */}
+        <div
+          className="inline-flex flex-wrap items-center gap-2 px-3 py-1.5 rounded-xl border border-[#F5B841]/35 bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.75)]"
+          data-testid="title-day-night-bar"
+          data-celestial-phase={dayNight.phaseId}
+          data-festival-zone={dayNight.zoneId}
+          role="group"
+          aria-label="Prahara Celestial Cycle & Zone Atmosphere"
+        >
+          <div className="flex items-center gap-2 pr-2 border-r border-white/15">
+            <span className="text-[11px] font-mono font-bold text-[#FBBF24] tabular-nums">
+              {dayNight.clockLabel}
+            </span>
+            <span className="text-[11px] font-semibold text-[#FFFBEB] whitespace-nowrap">
+              {dayNight.shortPhaseLabel}
+            </span>
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border border-white/15 text-[#FDE68A]"
+              style={{ borderColor: `${dayNight.zoneAccentHex}66` }}
+            >
+              {dayNight.zoneShortLabel}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {(
+              [
+                { id: 'auto', label: 'Auto Cycle' },
+                { id: 'dawn', label: 'Dawn' },
+                { id: 'day', label: 'Day' },
+                { id: 'dusk', label: 'Dusk' },
+                { id: 'night', label: 'Night' },
+              ] as const
+            ).map((opt) => {
+              const isSelected = dayNightMode === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  data-testid={`title-phase-btn-${opt.id}`}
+                  onClick={() => onChangeDayNightMode(opt.id)}
+                  className={`px-2 py-1 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#F59E0B] text-black shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                      : 'text-[#FDE68A]/85 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

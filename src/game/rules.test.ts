@@ -26,6 +26,19 @@ import {
   simulateRingTossTrajectory,
   stepCrowdVisitorAI,
   computeSpatialAudioGain,
+  detectFestivalZone,
+  createInitialDayNightState,
+  stepDayNightCycle,
+  evaluateWorldPhysicsModifiers,
+  createInitialInteractiveParticles,
+  stepInteractiveAtmosphereParticles,
+  cubicEaseInOut,
+  computeHandheldBreathing,
+  evaluateVistaFramingOffset,
+  computeTargetGameplayFov,
+  computeCorneringDutchRoll,
+  computeSpringArmDesiredPose,
+  resolveWhiskerCollisionDistance,
   type ChallengerState,
 } from './rules';
 
@@ -464,7 +477,295 @@ test('stepCrowdVisitorAI and computeSpatialAudioGain handle autonomous crowd wal
   assert.equal(farAudio.gain, 0, 'Emitter beyond maxDistance has zero gain');
 });
 
+test('detectFestivalZone and stepDayNightCycle shift lighting and atmosphere across celestial phases and zone dwell time', () => {
+  assert.equal(detectFestivalZone(0, 0, 'holi_braj', false), 'sanctum_plaza');
+  assert.equal(detectFestivalZone(38, -25, 'mela_central', false), 'carnival_grounds');
+  assert.equal(detectFestivalZone(-24, -10, 'mela_central', false), 'meena_bazaar');
+  assert.equal(detectFestivalZone(8, 12, 'diwali_ghat', false), 'sacred_groves');
+  assert.equal(detectFestivalZone(0, 0, 'mela_central', true), 'carnival_grounds');
 
+  let state = createInitialDayNightState('holi_braj');
+  let lastAtmosphere = stepDayNightCycle(state, {
+    dt: 0.05,
+    playerX: 0,
+    playerZ: 0,
+    activeWorld: 'holi_braj',
+  }).atmosphere;
+
+  // Spend time in Meena Bazaar and verify dwell time and zone influence increase
+  for (let i = 0; i < 60; i++) {
+    const res = stepDayNightCycle(state, {
+      dt: 0.05,
+      playerX: -22,
+      playerZ: -12,
+      activeWorld: 'mela_central',
+    });
+    state = res.state;
+    lastAtmosphere = res.atmosphere;
+  }
+
+  assert.equal(lastAtmosphere.zoneId, 'meena_bazaar');
+  assert.ok(state.activeZoneDwellSec >= 2.9, 'Dwell timer accumulates in Meena Bazaar');
+  assert.ok(lastAtmosphere.zoneInfluencePct > 35, 'Zone atmospheric influence grows with dwell time');
+
+  // Lock to Day phase and verify sunlit atmosphere vs Night phase starlit atmosphere
+  let dayState = state;
+  for (let i = 0; i < 40; i++) {
+    dayState = stepDayNightCycle(dayState, {
+      dt: 0.05,
+      playerX: 0,
+      playerZ: 0,
+      activeWorld: 'holi_braj',
+      overrideMode: 'day',
+    }).state;
+  }
+  const daySnap = stepDayNightCycle(dayState, {
+    dt: 0.05,
+    playerX: 0,
+    playerZ: 0,
+    activeWorld: 'holi_braj',
+    overrideMode: 'day',
+  }).atmosphere;
+
+  let nightState = state;
+  for (let i = 0; i < 40; i++) {
+    nightState = stepDayNightCycle(nightState, {
+      dt: 0.05,
+      playerX: 38,
+      playerZ: -25,
+      activeWorld: 'mela_central',
+      overrideMode: 'night',
+    }).state;
+  }
+  const nightSnap = stepDayNightCycle(nightState, {
+    dt: 0.05,
+    playerX: 38,
+    playerZ: -25,
+    activeWorld: 'mela_central',
+    overrideMode: 'night',
+  }).atmosphere;
+
+  assert.equal(daySnap.phaseId, 'day');
+  assert.equal(daySnap.zenithHex, 0x2b82d9);
+  assert.equal(daySnap.midSkyHex, 0x7cc2f5);
+  assert.equal(daySnap.horizonHex, 0xf7d4b2);
+  assert.equal(daySnap.fogHex, 0xf4c29f);
+  assert.equal(daySnap.fogDensity, 0.0012);
+  assert.equal(daySnap.sunColorHex, 0xfff1d0);
+  assert.equal(daySnap.sunIntensity, 2.0);
+  assert.equal(daySnap.hemiIntensity, 0.45);
+  assert.equal(daySnap.ambientIntensity, 0.45);
+  assert.equal(daySnap.toneMappingExposure, 0.75);
+  assert.equal(daySnap.bloomStrength, 0.08);
+  assert.equal(daySnap.bloomThreshold, 0.96);
+  assert.equal(nightSnap.phaseId, 'night');
+  assert.equal(nightSnap.bloomStrength, 0.34);
+  assert.equal(nightSnap.bloomThreshold, 0.88);
+  assert.ok(daySnap.sunIntensity > nightSnap.sunIntensity, 'Day has stronger solar intensity than Night');
+  assert.ok(nightSnap.starVisibility > daySnap.starVisibility, 'Night has higher star visibility than Day');
+  assert.ok(
+    nightSnap.emissiveScale > daySnap.emissiveScale,
+    'Night boosts lantern and fairy light emissive intensity over Day'
+  );
+});
+
+test('evaluateWorldPhysicsModifiers applies Holi mud drag, Diwali river boat-bobbing, and Mela jump-padding platforms', () => {
+  const holiMud = evaluateWorldPhysicsModifiers({
+    activeWorld: 'holi_braj',
+    playerX: -10.5,
+    playerZ: 3.5,
+    playerY: 0,
+    elapsedSec: 1.0,
+  });
+  assert.equal(holiMud.inHoliMud, true);
+  assert.ok(holiMud.speedMultiplier < 1.0, 'Holi mud slows player movement');
+
+  const diwaliRiver = evaluateWorldPhysicsModifiers({
+    activeWorld: 'diwali_ghat',
+    playerX: 4.0,
+    playerZ: 8.0,
+    playerY: 0,
+    elapsedSec: 1.2,
+  });
+  assert.equal(diwaliRiver.onDiwaliRiver, true);
+  assert.notEqual(diwaliRiver.buoyancyYOffset, 0, 'Diwali river applies vertical boat-bobbing oscillation');
+
+  const melaPad = evaluateWorldPhysicsModifiers({
+    activeWorld: 'mela_central',
+    playerX: 13.5,
+    playerZ: 3.5,
+    playerY: 0,
+    elapsedSec: 2.0,
+  });
+  assert.ok(melaPad.activeJumpPad !== null, 'Mela Central Hub detects jump-padding platform');
+  assert.ok(melaPad.activeJumpPad!.impulseY >= 14.0, 'Jump pad provides high vertical impulse');
+});
+
+test('stepInteractiveAtmosphereParticles generates Holi petal swirls by day and Diya flickers by night that respond to player proximity and movement', () => {
+  const initial = createInitialInteractiveParticles(16);
+  const targetParticle = initial[0];
+
+  const holiStep = stepInteractiveAtmosphereParticles(initial, {
+    dt: 0.05,
+    elapsedSec: 1.0,
+    playerX: targetParticle.x + 0.8,
+    playerY: 0,
+    playerZ: targetParticle.z + 0.6,
+    playerSpeed: 8.5,
+    activeWorld: 'holi_braj',
+    phaseId: 'day',
+  });
+  assert.equal(holiStep.kind, 'holi_petal');
+  assert.ok(
+    holiStep.particles[0].swirlEnergy > 0,
+    'Nearby Holi petal gains swirl energy when player moves close'
+  );
+  assert.ok(
+    holiStep.particles[0].vy > 0,
+    'Nearby Holi petal lifts upward in player wake'
+  );
+
+  const diwaliStep = stepInteractiveAtmosphereParticles(initial, {
+    dt: 0.05,
+    elapsedSec: 2.0,
+    playerX: targetParticle.x + 0.5,
+    playerY: 0,
+    playerZ: targetParticle.z + 0.5,
+    playerSpeed: 6.0,
+    activeWorld: 'diwali_ghat',
+    phaseId: 'night',
+  });
+  assert.equal(diwaliStep.kind, 'diya_flicker');
+  assert.ok(
+    diwaliStep.particles[0].swirlEnergy > 0,
+    'Nearby Diya flicker responds to player proximity in Diwali Ghat'
+  );
+});
+
+test('AAA Camera Director solvers compute cubic ease-in-out, vista framing, dynamic speed FOV, cornering dutch roll, spring-arm pose, and anti-clip whisker collision', () => {
+  // 1. Cubic ease-in-out bounds and midpoint
+  assert.equal(cubicEaseInOut(0), 0);
+  assert.equal(cubicEaseInOut(0.5), 0.5);
+  assert.equal(cubicEaseInOut(1), 1);
+
+  // 2. Handheld breathing stays within ±0.08m vertical and ±0.004 rad roll
+  for (let t = 0; t < 10; t += 0.35) {
+    const breath = computeHandheldBreathing(t);
+    assert.ok(Math.abs(breath.verticalOffsetM) <= 0.081);
+    assert.ok(Math.abs(breath.rollRad) <= 0.0041);
+  }
+
+  // 3. Monument / Vista Auto-Framing within 22 units of Temple (0, -19) or Giant Wheel (38, -25)
+  const farVista = evaluateVistaFramingOffset({
+    playerX: 0,
+    playerZ: 12,
+    activeWorld: 'holi_braj',
+  });
+  assert.equal(farVista.vistaBlend, 0);
+  assert.equal(farVista.extraDistance, 0);
+
+  const nearTemple = evaluateVistaFramingOffset({
+    playerX: 0,
+    playerZ: -13,
+    activeWorld: 'holi_braj',
+  });
+  assert.equal(nearTemple.nearestLandmark, 'temple');
+  assert.equal(nearTemple.vistaBlend, 1);
+  assert.equal(nearTemple.extraDistance, 3.0);
+  assert.equal(nearTemple.extraLookAtY, 3.5);
+
+  const nearWheel = evaluateVistaFramingOffset({
+    playerX: 35,
+    playerZ: -22,
+    activeWorld: 'mela_central',
+  });
+  assert.equal(nearWheel.nearestLandmark, 'giant_wheel');
+  assert.ok(nearWheel.extraDistance > 2.0);
+
+  // 4. Dynamic Speed FOV (43 idle, 46 walk, 58 sprint/dash, -1.5 recoil dip)
+  assert.equal(
+    computeTargetGameplayFov({
+      moveSpeed: 0,
+      isSprintingOrDashing: false,
+      fireRecoilTimerSec: 0,
+    }),
+    43
+  );
+  assert.equal(
+    computeTargetGameplayFov({
+      moveSpeed: 6.5,
+      isSprintingOrDashing: false,
+      fireRecoilTimerSec: 0,
+    }),
+    46
+  );
+  assert.equal(
+    computeTargetGameplayFov({
+      moveSpeed: 10.5,
+      isSprintingOrDashing: true,
+      fireRecoilTimerSec: 0,
+    }),
+    58
+  );
+  assert.equal(
+    computeTargetGameplayFov({
+      moveSpeed: 6.5,
+      isSprintingOrDashing: false,
+      fireRecoilTimerSec: 0.06,
+    }),
+    44.5
+  );
+
+  // 5. Cornering Dutch Roll clamped to ±0.043 rad (±2.5 degrees)
+  const leftStrafeRoll = computeCorneringDutchRoll({
+    strafeInputX: -1,
+    yawRateRadPerSec: 0,
+    moveSpeed: 7,
+  });
+  assert.ok(leftStrafeRoll > 0 && leftStrafeRoll <= 0.043);
+  const straightRoll = computeCorneringDutchRoll({
+    strafeInputX: 0,
+    yawRateRadPerSec: 0,
+    moveSpeed: 0,
+  });
+  assert.equal(straightRoll, 0);
+
+  // 6. Over-The-Shoulder Spring-Arm Pose & Action Beats (Shield dolly +1.8m, Firework sky tilt +6.0m)
+  const basePose = computeSpringArmDesiredPose({
+    playerX: 0,
+    playerY: 0,
+    playerZ: 10,
+    velocityX: 4,
+    velocityZ: -4,
+    activeWorld: 'holi_braj',
+    shieldActive: false,
+    fireworkLookUpTimerSec: 0,
+    elapsedSec: 0,
+  });
+  assert.equal(basePose.desiredDistance, 5.2);
+  assert.equal(basePose.desiredCamX, 0.65);
+
+  const shieldFireworkPose = computeSpringArmDesiredPose({
+    playerX: 0,
+    playerY: 0,
+    playerZ: 10,
+    velocityX: 0,
+    velocityZ: 0,
+    activeWorld: 'holi_braj',
+    shieldActive: true,
+    fireworkLookUpTimerSec: 0.9,
+    elapsedSec: 1.0,
+  });
+  assert.equal(shieldFireworkPose.desiredDistance, 7.0); // 5.2 + 1.8m shield dolly
+  assert.ok(
+    shieldFireworkPose.desiredLookAtY > basePose.desiredLookAtY + 5.5,
+    'Firework launch tilts camera lookAt upward by +6.0 units at peak'
+  );
+
+  // 7. Anti-Clip Camera Collision Whisker pulls camera forward by d - 0.35
+  assert.equal(resolveWhiskerCollisionDistance(5.2, null), 5.2);
+  assert.equal(resolveWhiskerCollisionDistance(5.2, 3.35), 3.0);
+});
 
 
 

@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 
-export type PBRMaterialType = 'royalCobblestone' | 'carvedSandstone' | 'ornateSilk';
+export type PBRMaterialType =
+  | 'royalCobblestone'
+  | 'carvedSandstone'
+  | 'ornateSilk'
+  | 'wetMarbleGulal';
 export type OrnateSilkVariant = 'crimson' | 'saffron' | 'emerald';
 
 export interface CreatePBRMaterialOptions {
@@ -81,8 +85,10 @@ function getOrBuildCanvases(
 
 /**
  * Generates 1024x1024 Diffuse, Bump, and Roughness CanvasTextures for:
- * - `royalCobblestone`: Deep obsidian-indigo stone pavers (#14111c to #1f1a2c) with warm bronze/gold inlaid mortar lines,
- *    matching grayscale bumpMap (bumpScale: 0.04), and varied roughnessMap (0.4 on polished stone tiles, 0.9 in crevices).
+ * - `royalCobblestone`: Reflective night basalt cobblestone (#14111c to #1f1a2c) with warm bronze/gold inlaid mortar lines,
+ *    matching grayscale bumpMap (bumpScale: 0.04), and low roughness (0.25) + metalness (0.2) for wet night reflections.
+ * - `wetMarbleGulal`: White Makrana marble courtyard floor heavily splashed with overlapping magenta, turmeric yellow,
+ *    cyan, and violet Gulal powder decals (roughness: 0.25 so it gleams like wet marble in golden-hour sunlight).
  * - `carvedSandstone`: Rich warm Rajasthani sandstone (#d68952 to #e8ad76) with horizontal stone block joints,
  *    carved floral relief bands, bumpScale: 0.05, and warm golden rim reflections.
  * - `ornateSilk`: Deep crimson (#8c1428), royal saffron (#d95b16), and peacock emerald (#0b525b) with woven gold Zari border patterns.
@@ -92,6 +98,121 @@ export function createPBRMaterial(
   options: CreatePBRMaterialOptions = {}
 ): PBRMaterialBundle {
   const anisotropy = options.anisotropy ?? 16;
+
+  if (type === 'wetMarbleGulal') {
+    const repeatX = options.repeatX ?? 16;
+    const repeatY = options.repeatY ?? 16;
+    const { colorCanvas, bumpCanvas, roughCanvas } = getOrBuildCanvases(
+      'wetMarbleGulal_sandstoneSlateInlay',
+      (cCtx, bCtx, rCtx, size) => {
+        // 1. Warm Medium Sandstone Base (#b8865c) — Zero near-white glare under sunlight!
+        cCtx.fillStyle = '#b8865c';
+        cCtx.fillRect(0, 0, size, size);
+
+        bCtx.fillStyle = 'rgb(185, 185, 185)';
+        bCtx.fillRect(0, 0, size, size);
+
+        rCtx.fillStyle = 'rgb(204, 204, 204)'; // ~0.80 matte stone roughness
+        rCtx.fillRect(0, 0, size, size);
+
+        // 2. Patterned Sandstone & Deep Slate (#3a3542) Geometric Courtyard Inlay Grid
+        const grid = 4;
+        const tileSpan = size / grid;
+        for (let r = 0; r < grid; r++) {
+          for (let c = 0; c < grid; c++) {
+            const tx = c * tileSpan;
+            const ty = r * tileSpan;
+            const cx = tx + tileSpan * 0.5;
+            const cy = ty + tileSpan * 0.5;
+
+            // Alternate warm terracotta-sandstone (#ad7a50) & medium sandstone (#c18f65) field tiles
+            cCtx.fillStyle = (r + c) % 2 === 0 ? '#b8865c' : '#a8764d';
+            cCtx.fillRect(tx + 4, ty + 4, tileSpan - 8, tileSpan - 8);
+
+            // Deep Slate (#3a3542) recessed border frame around each courtyard slab
+            cCtx.strokeStyle = '#3a3542';
+            cCtx.lineWidth = 10;
+            cCtx.strokeRect(tx + 8, ty + 8, tileSpan - 16, tileSpan - 16);
+
+            // Warm brass-ochre inner hairline inlay (#8c5a32)
+            cCtx.strokeStyle = '#784b27';
+            cCtx.lineWidth = 3;
+            cCtx.strokeRect(tx + 18, ty + 18, tileSpan - 36, tileSpan - 36);
+
+            // Central Geometric Slate (#3a3542) Diamond/Octagon Inlay Medallion inside each tile
+            const medR = tileSpan * 0.22;
+            cCtx.fillStyle = '#3a3542';
+            cCtx.beginPath();
+            cCtx.moveTo(cx, cy - medR);
+            cCtx.lineTo(cx + medR, cy);
+            cCtx.lineTo(cx, cy + medR);
+            cCtx.lineTo(cx - medR, cy);
+            cCtx.closePath();
+            cCtx.fill();
+
+            cCtx.fillStyle = '#9c6b43';
+            cCtx.beginPath();
+            cCtx.arc(cx, cy, medR * 0.42, 0, Math.PI * 2);
+            cCtx.fill();
+
+            // Matching bump relief for mortar joints and inlay medallions
+            bCtx.strokeStyle = 'rgb(75, 75, 75)';
+            bCtx.lineWidth = 8;
+            bCtx.strokeRect(tx + 4, ty + 4, tileSpan - 8, tileSpan - 8);
+
+            bCtx.strokeStyle = 'rgb(130, 130, 130)';
+            bCtx.lineWidth = 4;
+            bCtx.beginPath();
+            bCtx.moveTo(cx, cy - medR);
+            bCtx.lineTo(cx + medR, cy);
+            bCtx.lineTo(cx, cy + medR);
+            bCtx.lineTo(cx - medR, cy);
+            bCtx.closePath();
+            bCtx.stroke();
+          }
+        }
+
+        // 3. Natural Sandstone Mineral Grain (zero white highlights)
+        for (let g = 0; g < 220; g++) {
+          const gx = (g * 193 + 37) % size;
+          const gy = (g * 271 + 83) % size;
+          const gr = 4 + (g % 5) * 3;
+          cCtx.fillStyle =
+            g % 2 === 0
+              ? 'rgba(140, 92, 56, 0.18)'
+              : 'rgba(58, 53, 66, 0.14)';
+          cCtx.beginPath();
+          cCtx.arc(gx, gy, gr, 0, Math.PI * 2);
+          cCtx.fill();
+        }
+      }
+    );
+
+    const map = configureTexture(new THREE.CanvasTexture(colorCanvas), true, anisotropy, repeatX, repeatY);
+    const bumpMap = configureTexture(new THREE.CanvasTexture(bumpCanvas), false, anisotropy, repeatX, repeatY);
+    const roughnessMap = configureTexture(new THREE.CanvasTexture(roughCanvas), false, anisotropy, repeatX, repeatY);
+
+    const material = new THREE.MeshStandardMaterial({
+      color: options.tintHex ?? 0xffffff,
+      map,
+      bumpMap,
+      bumpScale: 0.035,
+      roughnessMap,
+      roughness: 0.8,
+      metalness: 0.05,
+      envMapIntensity: 0.45,
+    });
+
+    return {
+      material,
+      dispose: () => {
+        map.dispose();
+        bumpMap.dispose();
+        roughnessMap.dispose();
+        material.dispose();
+      },
+    };
+  }
 
   if (type === 'royalCobblestone') {
     const repeatX = options.repeatX ?? 22;
@@ -152,8 +273,8 @@ export function createPBRMaterial(
         bCtx.lineWidth = 3;
         bCtx.strokeRect(tx + pad + 1, ty + pad + 1, innerW - 2, innerH - 2);
 
-        // Roughness map: polished stone tile surface (~0.38 - 0.45 roughness -> rgb 96..115)
-        const roughVal = Math.round(96 + frac * 22);
+        // Roughness map: wet night basalt stone surface (~0.22 - 0.28 roughness -> rgb 56..72)
+        const roughVal = Math.round(56 + frac * 16);
         rCtx.fillStyle = `rgb(${roughVal}, ${roughVal}, ${roughVal})`;
         rCtx.fillRect(tx + pad, ty + pad, innerW, innerH);
       }
@@ -182,9 +303,9 @@ export function createPBRMaterial(
       bumpMap,
       bumpScale: 0.04,
       roughnessMap,
-      roughness: 1.0, // Driven by roughnessMap (0.4 on tiles, 0.9 in crevices)
-      metalness: 0.14,
-      envMapIntensity: 0.95,
+      roughness: 0.25, // Reflective night cobblestone (wet-look dark basalt floor)
+      metalness: 0.2,
+      envMapIntensity: 1.2,
     });
 
     return {
@@ -202,20 +323,20 @@ export function createPBRMaterial(
     const repeatX = options.repeatX ?? 4;
     const repeatY = options.repeatY ?? 4;
     const { colorCanvas, bumpCanvas, roughCanvas } = getOrBuildCanvases(
-      'carvedSandstone',
+      'carvedSandstone_medium',
       (cCtx, bCtx, rCtx, size) => {
-        // Rich warm Rajasthani sandstone (#d68952 to #e8ad76)
+        // Warm Medium Rajasthani Sandstone (#b8865c base) so stairs & masonry never glare white
         const baseGrad = cCtx.createLinearGradient(0, 0, 0, size);
-        baseGrad.addColorStop(0, '#e39e67');
-        baseGrad.addColorStop(0.5, '#d68952');
-        baseGrad.addColorStop(1, '#e8ad76');
+        baseGrad.addColorStop(0, '#be8c62');
+        baseGrad.addColorStop(0.5, '#b8865c');
+        baseGrad.addColorStop(1, '#ab784e');
         cCtx.fillStyle = baseGrad;
         cCtx.fillRect(0, 0, size, size);
 
         bCtx.fillStyle = 'rgb(165, 165, 165)';
         bCtx.fillRect(0, 0, size, size);
 
-        rCtx.fillStyle = 'rgb(158, 158, 158)';
+        rCtx.fillStyle = 'rgb(204, 204, 204)'; // ~0.80 roughness
         rCtx.fillRect(0, 0, size, size);
 
         // Horizontal ashlar stone courses & block joints
@@ -229,12 +350,12 @@ export function createPBRMaterial(
 
           for (let c = -1; c <= cols; c++) {
             const x = c * blockW + offset;
-            const shade = Math.sin(r * 4.1 + c * 2.7) * 10;
-            cCtx.fillStyle = `rgb(${Math.round(220 + shade)}, ${Math.round(145 + shade * 0.7)}, ${Math.round(90 + shade * 0.5)})`;
+            const shade = Math.sin(r * 4.1 + c * 2.7) * 8;
+            cCtx.fillStyle = `rgb(${Math.round(184 + shade)}, ${Math.round(134 + shade * 0.7)}, ${Math.round(92 + shade * 0.5)})`;
             cCtx.fillRect(x + 3, y + 3, blockW - 6, courseH - 6);
 
             // Recessed stone joint in diffuse, bump, and roughness
-            cCtx.strokeStyle = '#7c3f1d';
+            cCtx.strokeStyle = '#5c3318';
             cCtx.lineWidth = 3;
             cCtx.strokeRect(x + 1.5, y + 1.5, blockW - 3, courseH - 3);
 
@@ -242,7 +363,7 @@ export function createPBRMaterial(
             bCtx.lineWidth = 4;
             bCtx.strokeRect(x + 1.5, y + 1.5, blockW - 3, courseH - 3);
 
-            rCtx.strokeStyle = 'rgb(225, 225, 225)';
+            rCtx.strokeStyle = 'rgb(235, 235, 235)';
             rCtx.lineWidth = 4;
             rCtx.strokeRect(x + 1.5, y + 1.5, blockW - 3, courseH - 3);
           }
@@ -250,11 +371,11 @@ export function createPBRMaterial(
           // Carved floral / lotus relief frieze band on every second course
           if (r % 2 === 1) {
             const bandY = y + courseH * 0.5;
-            cCtx.fillStyle = '#f2be8c';
+            cCtx.fillStyle = '#c9976d';
             cCtx.fillRect(0, bandY - 14, size, 28);
-            bCtx.fillStyle = 'rgb(235, 235, 235)';
+            bCtx.fillStyle = 'rgb(220, 220, 220)';
             bCtx.fillRect(0, bandY - 14, size, 28);
-            rCtx.fillStyle = 'rgb(120, 120, 120)';
+            rCtx.fillStyle = 'rgb(190, 190, 190)';
             rCtx.fillRect(0, bandY - 14, size, 28);
 
             const motifs = 16;
@@ -262,7 +383,7 @@ export function createPBRMaterial(
             for (let m = 0; m < motifs; m++) {
               const mx = (m + 0.5) * motifW;
               // Carved diamond & lotus petal relief
-              cCtx.fillStyle = '#b55e2c';
+              cCtx.fillStyle = '#7c421e';
               cCtx.beginPath();
               cCtx.moveTo(mx, bandY - 11);
               cCtx.lineTo(mx + 14, bandY);
@@ -295,11 +416,11 @@ export function createPBRMaterial(
       bumpMap,
       bumpScale: 0.05,
       roughnessMap,
-      roughness: 0.85,
-      metalness: 0.12,
-      emissive: options.emissiveHex ?? 0x240e04,
-      emissiveIntensity: options.emissiveIntensity ?? 0.05,
-      envMapIntensity: 0.8,
+      roughness: 0.8,
+      metalness: 0.05,
+      emissive: options.emissiveHex ?? 0x000000,
+      emissiveIntensity: options.emissiveIntensity ?? 0.0,
+      envMapIntensity: 0.45,
     });
 
     return {

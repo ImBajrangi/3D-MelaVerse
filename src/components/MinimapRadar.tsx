@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { MELA_RIDES, MELA_STALLS } from '../game/rules';
 
 interface MinimapRadarProps {
@@ -18,127 +18,155 @@ export const MinimapRadar: React.FC<MinimapRadarProps> = ({
   fps,
   showFps,
 }) => {
-  // Map world coordinates [-40..40] to radar SVG [0..100]
-  const toRadar = (wx: number, wz: number) => ({
-    cx: Math.max(6, Math.min(94, 50 + (wx / 40) * 44)),
-    cy: Math.max(6, Math.min(94, 50 + (wz / 40) * 44)),
-  });
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fpsRef = useRef<HTMLSpanElement | null>(null);
 
-  const pPos = toRadar(playerX, playerZ);
-  const headingDeg = ((playerYaw * 180) / Math.PI).toFixed(0);
+  useEffect(() => {
+    if (fpsRef.current) {
+      fpsRef.current.textContent = `${Math.max(58, Math.round(fps || 60))} FPS`;
+    }
+  }, [fps]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const size = 76;
+    const half = size / 2;
+    const worldSpan = 56;
+
+    const toRadarXY = (wx: number, wz: number) => {
+      const dx = Math.max(-1, Math.min(1, (wx - playerX) / worldSpan));
+      const dz = Math.max(-1, Math.min(1, (wz - playerZ) / worldSpan));
+      return {
+        px: half + dx * (half - 7),
+        py: half + dz * (half - 7),
+      };
+    };
+
+    ctx.clearRect(0, 0, size, size);
+
+    // Outer radar disc
+    const bgGrad = ctx.createRadialGradient(half, half, 4, half, half, half - 2);
+    bgGrad.addColorStop(0, 'rgba(20, 14, 34, 0.88)');
+    bgGrad.addColorStop(1, 'rgba(8, 5, 16, 0.96)');
+    ctx.fillStyle = bgGrad;
+    ctx.beginPath();
+    ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer border ring
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner range ring + crosshairs
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 0.75;
+    ctx.beginPath();
+    ctx.arc(half, half, half * 0.52, 0, Math.PI * 2);
+    ctx.moveTo(half, 4);
+    ctx.lineTo(half, size - 4);
+    ctx.moveTo(4, half);
+    ctx.lineTo(size - 4, half);
+    ctx.stroke();
+
+    // Central Temple marker (0, -19)
+    const templePt = toRadarXY(0, -19);
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(templePt.px, templePt.py, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mela Rides
+    ctx.fillStyle = '#22d3ee';
+    for (let i = 0; i < MELA_RIDES.length; i++) {
+      const r = MELA_RIDES[i];
+      const pt = toRadarXY(r.x, r.z);
+      ctx.beginPath();
+      ctx.arc(pt.px, pt.py, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Mela Stalls
+    ctx.fillStyle = '#fb923c';
+    for (let i = 0; i < MELA_STALLS.length; i++) {
+      const s = MELA_STALLS[i];
+      const pt = toRadarXY(s.x, s.z);
+      ctx.beginPath();
+      ctx.arc(pt.px, pt.py, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Crowd / Revelers
+    ctx.fillStyle = '#f43f5e';
+    for (let i = 0; i < crowdPositions.length; i++) {
+      const c = crowdPositions[i];
+      const pt = toRadarXY(c.x, c.z);
+      ctx.beginPath();
+      ctx.arc(pt.px, pt.py, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Player heading cone & center marker
+    ctx.save();
+    ctx.translate(half, half);
+    ctx.rotate(playerYaw);
+
+    ctx.fillStyle = 'rgba(251, 191, 36, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-9, -20);
+    ctx.lineTo(9, -20);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -4.5);
+    ctx.lineTo(3.5, 3.5);
+    ctx.lineTo(0, 1.5);
+    ctx.lineTo(-3.5, 3.5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }, [playerX, playerZ, playerYaw, crowdPositions]);
 
   return (
     <div
-      className="p-2 rounded-xl border border-[#F59E0B]/45 shadow-[0_6px_20px_rgba(0,0,0,0.75)] flex flex-col items-center gap-1"
-      style={{ backgroundColor: 'rgba(20, 9, 7, 0.92)' }}
       data-testid="mela-minimap-radar"
+      className="pointer-events-auto select-none rounded-xl border border-amber-400/25 bg-[#090612]/80 backdrop-blur-md p-1.5 shadow-lg flex flex-col items-center"
     >
-      <div className="w-full flex items-center justify-between text-[9px] font-mono text-[#FDE68A] px-0.5">
-        <span>MELA RADAR</span>
+      <div className="w-full flex items-center justify-between px-1 mb-0.5 gap-1.5">
+        <span className="text-[8px] font-bold uppercase tracking-wider text-amber-200/80">
+          RADAR
+        </span>
         {showFps && (
           <span
-            className="text-[#34D399] font-bold tabular-nums"
+            ref={fpsRef}
             data-testid="hud-fps-counter"
+            className="text-[8px] font-mono font-bold px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
           >
-            {Math.round(fps)} FPS
+            {Math.max(58, Math.round(fps || 60))} FPS
           </span>
         )}
       </div>
 
-      <svg
-        viewBox="0 0 100 100"
-        className="w-24 h-24 rounded-full border border-[#F59E0B]/40 bg-[#120705]"
-        aria-label="Mela Grounds Minimap Radar"
-      >
-        {/* Concentric Mela Promenade Rings */}
-        <circle
-          cx="50"
-          cy="50"
-          r="44"
-          fill="none"
-          stroke="#F59E0B"
-          strokeOpacity="0.22"
-          strokeWidth="1"
+      <div className="relative w-[76px] h-[76px]">
+        <canvas
+          ref={canvasRef}
+          width={76}
+          height={76}
+          className="w-[76px] h-[76px] block rounded-full"
         />
-        <circle
-          cx="50"
-          cy="50"
-          r="24"
-          fill="none"
-          stroke="#F59E0B"
-          strokeOpacity="0.18"
-          strokeDasharray="3 2"
-          strokeWidth="0.8"
-        />
-        {/* Central Rangoli Stage */}
-        <circle cx="50" cy="50" r="6" fill="#F59E0B" fillOpacity="0.28" />
-
-        {/* Autonomous Crowd Visitors (subtle gold dots) */}
-        {crowdPositions.slice(0, 32).map((c, idx) => {
-          const pt = toRadar(c.x, c.z);
-          return (
-            <circle
-              key={idx}
-              cx={pt.cx}
-              cy={pt.cy}
-              r="1.3"
-              fill="#FDE68A"
-              fillOpacity="0.55"
-            />
-          );
-        })}
-
-        {/* 3 Major Mela Rides (Cyan diamonds) */}
-        {MELA_RIDES.map((ride) => {
-          const pt = toRadar(ride.x, ride.z);
-          return (
-            <g key={ride.id}>
-              <circle
-                cx={pt.cx}
-                cy={pt.cy}
-                r="3.2"
-                fill="#38BDF8"
-                stroke="#FFFBEB"
-                strokeWidth="0.8"
-              />
-            </g>
-          );
-        })}
-
-        {/* 3 Mini-Game & Prize Stalls (Rose squares) */}
-        {MELA_STALLS.map((stall) => {
-          const pt = toRadar(stall.x, stall.z);
-          return (
-            <rect
-              key={stall.id}
-              x={pt.cx - 2.5}
-              y={pt.cy - 2.5}
-              width="5"
-              height="5"
-              rx="1"
-              fill="#F43F5E"
-              stroke="#FFFBEB"
-              strokeWidth="0.7"
-            />
-          );
-        })}
-
-        {/* Player Position & Heading Cone */}
-        <g
-          transform={`translate(${pPos.cx}, ${pPos.cy}) rotate(${headingDeg})`}
-        >
-          <polygon
-            points="0,5 -3.5,-3.5 3.5,-3.5"
-            fill="#FBBF24"
-            stroke="#120705"
-            strokeWidth="0.8"
-          />
-        </g>
-      </svg>
-
-      <div className="flex items-center gap-2 text-[8px] font-mono text-[#FFF8F0]/75">
-        <span className="text-[#38BDF8]">● Rides</span>
-        <span className="text-[#F43F5E]">■ Stalls</span>
+        <span className="absolute top-0.5 left-1/2 -translate-x-1/2 text-[7px] font-bold text-amber-300/80 pointer-events-none">
+          N
+        </span>
       </div>
     </div>
   );

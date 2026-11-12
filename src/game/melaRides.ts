@@ -204,10 +204,13 @@ export function buildMelaRidesAndStalls(
   const giantWheelAnchor = new THREE.Group();
   giantWheelAnchor.position.set(giantWheelSpec.x, 0, giantWheelSpec.z);
 
-  // Warm Golden PointLight Pool under the Giant Wheel (#ff9436, distance 35, decay 1.8)
-  const wheelPointLight = new THREE.PointLight(0xff9436, 2.4, 35, 1.8);
-  wheelPointLight.position.set(0, 5.5, 2.5);
-  giantWheelAnchor.add(wheelPointLight);
+  // Warm Emissive Hub Beacon under the Giant Wheel (Selective Bloom target — zero PointLight fragment overhead)
+  const wheelBeacon = new THREE.Mesh(
+    trackGeo(new THREE.SphereGeometry(0.32, 10, 10)),
+    neonGoldBaseMat
+  );
+  wheelBeacon.position.set(0, 5.5, 2.5);
+  giantWheelAnchor.add(wheelBeacon);
 
   // Carved Sandstone Stepped Plinth Base (LatheGeometry)
   const gwPlinthPoints = [
@@ -579,11 +582,14 @@ export function buildMelaRidesAndStalls(
 
     const roofSilkMat = silkMaterials[silkVariantIdx % silkMaterials.length];
 
-    // Warm Golden-Orange PointLight Pool inside each Bazaar Stall (#ff9436, distance 28, decay 1.8)
+    // Warm Emissive Canopy Lantern inside each Bazaar Stall (Selective Bloom target — zero PointLight overhead)
     if (stallId) {
-      const stallLight = new THREE.PointLight(0xff9436, 1.55, 28, 1.8);
-      stallLight.position.set(0, 2.85, 0.2);
-      pavGroup.add(stallLight);
+      const stallLantern = new THREE.Mesh(
+        trackGeo(new THREE.SphereGeometry(0.18, 8, 8)),
+        neonGoldBaseMat
+      );
+      stallLantern.position.set(0, 2.85, 0.2);
+      pavGroup.add(stallLantern);
     }
 
     // Carved Sandstone Stepped Base Plinth

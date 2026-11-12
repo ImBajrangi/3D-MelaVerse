@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   MELA_RIDES,
   createInitialKarmaState,
+  createInitialDayNightState,
+  stepDayNightCycle,
   type ArsenalModeId,
   type GameState,
   type GameOutcome,
   type FestivalWorldId,
   type GulalColorId,
+  type DayNightCycleMode,
 } from './game/rules';
 import {
   ATTIRE_PRESETS,
@@ -135,6 +138,7 @@ export function App() {
   const [karmaOfferingCount, setKarmaOfferingCount] = useState<number>(0);
   const [jumpTriggerCount, setJumpTriggerCount] = useState<number>(0);
   const [interactTriggerCount, setInteractTriggerCount] = useState<number>(0);
+  const [dayNightMode, setDayNightMode] = useState<DayNightCycleMode>('auto');
   const [mobileMoveVec, setMobileMoveVec] = useState<{
     dx: number;
     dz: number;
@@ -200,6 +204,12 @@ export function App() {
       maxConcurrentAttackers: 2,
     },
     karma: createInitialKarmaState(),
+    dayNight: stepDayNightCycle(createInitialDayNightState('holi_braj'), {
+      dt: 0.016,
+      playerX: 0,
+      playerZ: 6.5,
+      activeWorld: 'holi_braj',
+    }).atmosphere,
     playerX: 0,
     playerZ: 6.5,
     playerYaw: Math.PI,
@@ -463,9 +473,12 @@ export function App() {
         karmaOfferingCount={karmaOfferingCount}
         jumpTriggerCount={jumpTriggerCount}
         interactTriggerCount={interactTriggerCount}
+        dayNightMode={dayNightMode}
+        onChangeDayNightMode={setDayNightMode}
         graphicsPreset={graphicsPreset}
         cameraMode={cameraMode}
         mountedRide={mountedRide}
+        activeStallModal={activeStallModal}
         foodBoostMultiplier={activeFoodBoostMultiplier}
         mobileMoveVec={mobileMoveVec}
         mobileLookDeltaYaw={mobileLookDeltaYaw}
@@ -509,6 +522,9 @@ export function App() {
       {gameState === 'title' && (
         <TitleScreen
           activeWorld={activeWorld}
+          dayNight={hud.dayNight}
+          dayNightMode={dayNightMode}
+          onChangeDayNightMode={setDayNightMode}
           onStartGame={startGameplay}
           onOpenCharacterModal={() => setCharacterOpen(true)}
           onOpenBlueprintModal={() => setBlueprintOpen(true)}
@@ -521,6 +537,8 @@ export function App() {
         <GameHUD
           hud={{ ...hud, selectedGulal, selectedArsenal }}
           activeWorld={activeWorld}
+          dayNightMode={dayNightMode}
+          onChangeDayNightMode={setDayNightMode}
           festivalCoins={coins}
           rewardTickets={tickets}
           totalXp={totalXp}

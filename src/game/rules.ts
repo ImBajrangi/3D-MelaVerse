@@ -1780,3 +1780,1131 @@ export function computeSpatialAudioGain(
 
   return { gain, pan, distance };
 }
+
+// ============================================================================
+// DYNAMIC DAY-NIGHT CYCLE & FESTIVAL ZONE ATMOSPHERE ENGINE
+// ============================================================================
+
+export type FestivalZoneId =
+  | 'sanctum_plaza'
+  | 'carnival_grounds'
+  | 'meena_bazaar'
+  | 'sacred_groves';
+
+export type DayNightPhaseId = 'dawn' | 'day' | 'dusk' | 'night';
+export type DayNightCycleMode = 'auto' | DayNightPhaseId;
+
+export interface FestivalZoneSpec {
+  id: FestivalZoneId;
+  name: string;
+  shortLabel: string;
+  atmosphereHint: string;
+  targetPhaseAffinity: DayNightPhaseId;
+  preferredTimeOfDay: number; // [0..1)
+  warmthMultiplier: number;
+  fogMultiplier: number;
+  accentHex: string;
+  tintHex: number;
+}
+
+export const FESTIVAL_ZONES: Record<FestivalZoneId, FestivalZoneSpec> = {
+  sanctum_plaza: {
+    id: 'sanctum_plaza',
+    name: 'Sanctum Mandap & Rangoli Plaza',
+    shortLabel: 'Sanctum Plaza',
+    atmosphereHint: 'Sacred Aarti Gold · Warm Sandstone & Diya Glow',
+    targetPhaseAffinity: 'dusk',
+    preferredTimeOfDay: 0.62,
+    warmthMultiplier: 1.22,
+    fogMultiplier: 0.92,
+    accentHex: '#F59E0B',
+    tintHex: 0xff9e44,
+  },
+  carnival_grounds: {
+    id: 'carnival_grounds',
+    name: 'Aakash Jhula Carnival Grounds',
+    shortLabel: 'Carnival Grounds',
+    atmosphereHint: 'Starlit Mela Indigo · Neon Wheel & Electric Twilight',
+    targetPhaseAffinity: 'night',
+    preferredTimeOfDay: 0.86,
+    warmthMultiplier: 1.08,
+    fogMultiplier: 0.88,
+    accentHex: '#EC4899',
+    tintHex: 0xc084fc,
+  },
+  meena_bazaar: {
+    id: 'meena_bazaar',
+    name: 'Meena Bazaar & Craft Pavilions',
+    shortLabel: 'Meena Bazaar',
+    atmosphereHint: 'Silk Canopy Amber · Brass Lantern & Zari Warmth',
+    targetPhaseAffinity: 'dusk',
+    preferredTimeOfDay: 0.56,
+    warmthMultiplier: 1.28,
+    fogMultiplier: 0.95,
+    accentHex: '#FB7185',
+    tintHex: 0xf97316,
+  },
+  sacred_groves: {
+    id: 'sacred_groves',
+    name: 'Kadamba Groves & Riverside Ghat',
+    shortLabel: 'Sacred Groves',
+    atmosphereHint: 'Braj Sunlit Mist & River Ghat Reflections',
+    targetPhaseAffinity: 'dawn',
+    preferredTimeOfDay: 0.22,
+    warmthMultiplier: 1.0,
+    fogMultiplier: 1.12,
+    accentHex: '#38BDF8',
+    tintHex: 0x38bdf8,
+  },
+};
+
+export interface DayNightPhaseKeyframe {
+  id: DayNightPhaseId;
+  sanskritName: string;
+  label: string;
+  centerTime: number; // [0..1)
+  zenithHex: number;
+  midSkyHex: number;
+  horizonHex: number;
+  fogHex: number;
+  fogDensity: number;
+  sunColorHex: number;
+  sunIntensity: number;
+  hemiSkyHex: number;
+  hemiGroundHex: number;
+  hemiIntensity: number;
+  ambientHex: number;
+  ambientIntensity: number;
+  rimLightHex: number;
+  rimIntensity: number;
+  pointLightIntensityScale: number;
+  emissiveScale: number;
+  starVisibility: number; // 0..1
+  fireflyActivity: number; // 0..1
+  toneMappingExposure: number;
+}
+
+export const DAY_NIGHT_KEYFRAMES: Record<DayNightPhaseId, DayNightPhaseKeyframe> = {
+  dawn: {
+    id: 'dawn',
+    sanskritName: 'Usha · Saffron Dawn',
+    label: 'Usha Dawn',
+    centerTime: 0.125, // ~06:00
+    zenithHex: 0x241b45,
+    midSkyHex: 0x6b3054,
+    horizonHex: 0xe87a54,
+    fogHex: 0x42213d,
+    fogDensity: 0.0015,
+    sunColorHex: 0xffa66b,
+    sunIntensity: 1.25,
+    hemiSkyHex: 0xfca5a5,
+    hemiGroundHex: 0x5c3422,
+    hemiIntensity: 0.55,
+    ambientHex: 0x4a2c40,
+    ambientIntensity: 0.38,
+    rimLightHex: 0xffb76b,
+    rimIntensity: 1.18,
+    pointLightIntensityScale: 0.72,
+    emissiveScale: 0.85,
+    starVisibility: 0.0,
+    fireflyActivity: 0.35,
+    toneMappingExposure: 0.75,
+  },
+  day: {
+    id: 'day',
+    sanskritName: 'Madhyahna · Golden-Hour Braj Sun',
+    label: 'Madhyahna Day',
+    centerTime: 0.375, // ~12:00
+    zenithHex: 0x2b82d9,
+    midSkyHex: 0x7cc2f5,
+    horizonHex: 0xf7d4b2,
+    fogHex: 0xf4c29f,
+    fogDensity: 0.0012,
+    sunColorHex: 0xfff1d0,
+    sunIntensity: 2.0,
+    hemiSkyHex: 0x7cc2f5,
+    hemiGroundHex: 0xc27838,
+    hemiIntensity: 0.45,
+    ambientHex: 0xfff5eb,
+    ambientIntensity: 0.45,
+    rimLightHex: 0xffe099,
+    rimIntensity: 0.65,
+    pointLightIntensityScale: 0.0,
+    emissiveScale: 0.15,
+    starVisibility: 0.0,
+    fireflyActivity: 0.0,
+    toneMappingExposure: 0.75,
+  },
+  dusk: {
+    id: 'dusk',
+    sanskritName: 'Godhuli · Golden Aarti Sunset',
+    label: 'Godhuli Dusk',
+    centerTime: 0.625, // ~18:00
+    zenithHex: 0x140c2c,
+    midSkyHex: 0x4c1d4b,
+    horizonHex: 0xd95338,
+    fogHex: 0x2b132e,
+    fogDensity: 0.0016,
+    sunColorHex: 0xff7b29,
+    sunIntensity: 1.18,
+    hemiSkyHex: 0xfb923c,
+    hemiGroundHex: 0x431f16,
+    hemiIntensity: 0.52,
+    ambientHex: 0x381c30,
+    ambientIntensity: 0.3,
+    rimLightHex: 0xff8c3b,
+    rimIntensity: 1.32,
+    pointLightIntensityScale: 1.08,
+    emissiveScale: 1.45,
+    starVisibility: 0.62,
+    fireflyActivity: 0.82,
+    toneMappingExposure: 0.9,
+  },
+  night: {
+    id: 'night',
+    sanskritName: 'Nishitha · Starlit Deepotsav',
+    label: 'Nishitha Night',
+    centerTime: 0.875, // ~22:00
+    zenithHex: 0x090c26,
+    midSkyHex: 0x161c46,
+    horizonHex: 0x2c1f4e,
+    fogHex: 0x0c0a20,
+    fogDensity: 0.0018,
+    sunColorHex: 0x6b7cff, // Cool silver-indigo moonlight
+    sunIntensity: 0.82,
+    hemiSkyHex: 0x6b7cff,
+    hemiGroundHex: 0x3b1f14,
+    hemiIntensity: 0.45,
+    ambientHex: 0x241b38,
+    ambientIntensity: 0.22,
+    rimLightHex: 0xffa94d,
+    rimIntensity: 0.98,
+    pointLightIntensityScale: 1.35,
+    emissiveScale: 2.15,
+    starVisibility: 1.0,
+    fireflyActivity: 1.0,
+    toneMappingExposure: 0.9,
+  },
+};
+
+export interface DayNightCycleState {
+  timeOfDay: number; // Normalized [0, 1) where 0.125=Dawn, 0.375=Day, 0.625=Dusk, 0.875=Night
+  mode: DayNightCycleMode;
+  currentZone: FestivalZoneId;
+  activeZoneDwellSec: number;
+  zoneDwellTotals: Record<FestivalZoneId, number>;
+  zoneInfluenceStrength: number; // [0..1] grows as player spends time in the current zone
+}
+
+export interface DayNightAtmosphereProfile {
+  phaseId: DayNightPhaseId;
+  sanskritLabel: string;
+  shortPhaseLabel: string;
+  clockLabel: string; // e.g. "18:24"
+  timeOfDay: number;
+  mode: DayNightCycleMode;
+  zoneId: FestivalZoneId;
+  zoneName: string;
+  zoneShortLabel: string;
+  zoneAtmosphereHint: string;
+  zoneAccentHex: string;
+  zoneDwellSec: number;
+  zoneInfluencePct: number;
+  zenithHex: number;
+  midSkyHex: number;
+  horizonHex: number;
+  fogHex: number;
+  fogDensity: number;
+  sunColorHex: number;
+  sunIntensity: number;
+  sunPosition: { x: number; y: number; z: number };
+  moonPosition: { x: number; y: number; z: number };
+  hemiSkyHex: number;
+  hemiGroundHex: number;
+  hemiIntensity: number;
+  ambientHex: number;
+  ambientIntensity: number;
+  rimLightHex: number;
+  rimIntensity: number;
+  pointLightIntensityScale: number;
+  emissiveScale: number;
+  starVisibility: number;
+  fireflyActivity: number;
+  toneMappingExposure: number;
+  bloomStrength: number;
+  bloomThreshold: number;
+}
+
+function lerpHexColor(hexA: number, hexB: number, t: number): number {
+  const clamped = Math.max(0, Math.min(1, t));
+  const rA = (hexA >> 16) & 0xff;
+  const gA = (hexA >> 8) & 0xff;
+  const bA = hexA & 0xff;
+
+  const rB = (hexB >> 16) & 0xff;
+  const gB = (hexB >> 8) & 0xff;
+  const bB = hexB & 0xff;
+
+  const r = Math.round(rA + (rB - rA) * clamped);
+  const g = Math.round(gA + (gB - gA) * clamped);
+  const b = Math.round(bA + (bB - bA) * clamped);
+
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * Classifies the player's current 3D position and active world/ride into one of the 4 Festival Zones.
+ */
+export function detectFestivalZone(
+  playerX: number,
+  playerZ: number,
+  activeWorld: FestivalWorldId = 'holi_braj',
+  isMountedOnRide = false
+): FestivalZoneId {
+  if (isMountedOnRide || playerX >= 15.5) {
+    return 'carnival_grounds';
+  }
+  if (playerX <= -13.5) {
+    return 'meena_bazaar';
+  }
+  // In Diwali Ghat, stepping toward the riverside ghat steps (z >= 4.2) enters the Sacred Groves / Riverfront zone
+  if (activeWorld === 'diwali_ghat' && playerZ >= 4.2) {
+    return 'sacred_groves';
+  }
+  const distToSanctumOrRangoli = Math.min(
+    Math.hypot(playerX, playerZ),
+    Math.hypot(playerX, playerZ + 18)
+  );
+  if (distToSanctumOrRangoli <= 16.5) {
+    return 'sanctum_plaza';
+  }
+  return 'sacred_groves';
+}
+
+/**
+ * Creates the initial Day-Night Cycle state tailored to the starting festival world.
+ */
+export function createInitialDayNightState(
+  activeWorld: FestivalWorldId = 'holi_braj'
+): DayNightCycleState {
+  // Holi Braj begins in radiant sunlit Indian daylight (0.375); Diwali Ghat in starlit Deepotsav night (0.875); Mela Hub in royal carnival night (0.82)
+  const initialTime =
+    activeWorld === 'holi_braj'
+      ? 0.375
+      : activeWorld === 'diwali_ghat'
+      ? 0.875
+      : 0.82;
+
+  return {
+    timeOfDay: initialTime,
+    mode: 'auto',
+    currentZone: 'sanctum_plaza',
+    activeZoneDwellSec: 0,
+    zoneDwellTotals: {
+      sanctum_plaza: 0,
+      carnival_grounds: 0,
+      meena_bazaar: 0,
+      sacred_groves: 0,
+    },
+    zoneInfluenceStrength: 0.25,
+  };
+}
+
+export function formatTimeOfDayClock(timeOfDay: number): string {
+  const wrapped = ((timeOfDay % 1) + 1) % 1;
+  // Map [0..1) where 0.0 = 03:00, 0.125 = 06:00 (Dawn), 0.375 = 12:00 (Noon), 0.625 = 18:00 (Dusk), 0.875 = 24:00
+  const totalHours = (wrapped * 24 + 3) % 24;
+  const hours = Math.floor(totalHours);
+  const minutes = Math.floor((totalHours - hours) * 60);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export function resolvePhaseIdFromTime(timeOfDay: number): DayNightPhaseId {
+  const wrapped = ((timeOfDay % 1) + 1) % 1;
+  // 07:00 corresponds to (7 - 3)/24 = 0.1667; 16:30 corresponds to (16.5 - 3)/24 = 0.5625
+  if (wrapped < 4 / 24) return 'dawn';
+  if (wrapped <= 13.5 / 24) return 'day';
+  if (wrapped < 0.75) return 'dusk';
+  return 'night';
+}
+
+/**
+ * Advances the dynamic day-night cycle and computes the blended 3D lighting & atmosphere profile
+ * based on both time progression and the zone where the player is spending time.
+ */
+export function stepDayNightCycle(
+  prevState: DayNightCycleState,
+  params: {
+    dt: number;
+    playerX: number;
+    playerZ: number;
+    activeWorld: FestivalWorldId;
+    isMountedOnRide?: boolean;
+    overrideMode?: DayNightCycleMode;
+  }
+): {
+  state: DayNightCycleState;
+  atmosphere: DayNightAtmosphereProfile;
+} {
+  const safeDt = clampDelta(params.dt);
+  const nextZone = detectFestivalZone(
+    params.playerX,
+    params.playerZ,
+    params.activeWorld,
+    Boolean(params.isMountedOnRide)
+  );
+
+  const sameZone = nextZone === prevState.currentZone;
+  const activeZoneDwellSec = sameZone
+    ? prevState.activeZoneDwellSec + safeDt
+    : safeDt;
+
+  const nextTotals: Record<FestivalZoneId, number> = {
+    ...prevState.zoneDwellTotals,
+    [nextZone]: (prevState.zoneDwellTotals[nextZone] ?? 0) + safeDt,
+  };
+
+  // Zone influence builds up smoothly over ~8 seconds of dwelling in a festival zone
+  const targetInfluence = Math.min(1, 0.2 + activeZoneDwellSec / 8.0);
+  const zoneInfluenceStrength =
+    prevState.zoneInfluenceStrength +
+    (targetInfluence - prevState.zoneInfluenceStrength) *
+      Math.min(1, safeDt * 2.5);
+
+  const activeMode = params.overrideMode ?? prevState.mode;
+  const zoneSpec = FESTIVAL_ZONES[nextZone];
+
+  let nextTime = prevState.timeOfDay;
+  if (activeMode === 'auto') {
+    // Full base cycle every 10 minutes (600 seconds) of active play, plus gentle gravitational pull toward the zone's signature time of day as dwell increases
+    const baseRatePerSec = 1 / 600;
+    const deltaT = baseRatePerSec * safeDt;
+
+    // Keep World 01: Holi — Braj anchored in radiant sunlit daytime (0.375) when in Sanctum Plaza / Sacred Groves
+    const effectivePreferredTime =
+      params.activeWorld === 'holi_braj' &&
+      (nextZone === 'sanctum_plaza' || nextZone === 'sacred_groves')
+        ? 0.375
+        : zoneSpec.preferredTimeOfDay;
+
+    // Shortest circular distance on [0, 1) toward the zone's preferred atmospheric hour
+    let circularDiff = effectivePreferredTime - nextTime;
+    if (circularDiff > 0.5) circularDiff -= 1;
+    if (circularDiff < -0.5) circularDiff += 1;
+
+    // Spending time in a zone gently accelerates the cycle toward that zone's signature lighting phase
+    const zonePull =
+      Math.abs(circularDiff) > 0.03
+        ? circularDiff * 0.045 * zoneInfluenceStrength * safeDt
+        : 0;
+    nextTime = (((nextTime + deltaT + zonePull) % 1) + 1) % 1;
+  } else {
+    // Snap immediately when user selects a manual phase button (Dawn | Day | Dusk | Night), and hold steady at its canonical center time
+    const targetCenter = DAY_NIGHT_KEYFRAMES[activeMode].centerTime;
+    if (prevState.mode !== activeMode) {
+      nextTime = targetCenter;
+    } else {
+      let diff = targetCenter - nextTime;
+      if (diff > 0.5) diff -= 1;
+      if (diff < -0.5) diff += 1;
+      nextTime =
+        Math.abs(diff) < 0.02
+          ? targetCenter
+          : (((nextTime + diff * Math.min(1, safeDt * 18.0)) % 1) + 1) % 1;
+    }
+  }
+
+  // Interpolate between the 4 ordered keyframes: dawn (0.125), day (0.375), dusk (0.625), night (0.875)
+  const orderedPhases: DayNightPhaseId[] = ['dawn', 'day', 'dusk', 'night'];
+  const shifted = (((nextTime - 0.125) % 1) + 1) % 1; // 0 at dawn center, 0.25 at day, 0.5 at dusk, 0.75 at night
+  const segmentFloat = shifted * 4;
+  const idxA = Math.floor(segmentFloat) % 4;
+  const idxB = (idxA + 1) % 4;
+  const localT = segmentFloat - Math.floor(segmentFloat);
+  // Smoothstep for silky lighting transitions
+  const smoothT = localT * localT * (3 - 2 * localT);
+
+  const kfA = DAY_NIGHT_KEYFRAMES[orderedPhases[idxA]];
+  const kfB = DAY_NIGHT_KEYFRAMES[orderedPhases[idxB]];
+
+  const lerpNum = (a: number, b: number) => a + (b - a) * smoothT;
+  const phaseId = resolvePhaseIdFromTime(nextTime);
+
+  // Preserve crisp radiant sky colors (#3a8ee6, #7ec8f8, #ffe0cc, fog #f5d6e0, sun #fff3d6 @ 2.4) across the Day window (07:00 to 16:30)
+  const isDaytime = phaseId === 'day';
+  const dayKf = DAY_NIGHT_KEYFRAMES.day;
+  const zoneTintBlend = isDaytime ? 0 : zoneInfluenceStrength * 0.22;
+  const zenithHex = isDaytime
+    ? dayKf.zenithHex
+    : lerpHexColor(
+        lerpHexColor(kfA.zenithHex, kfB.zenithHex, smoothT),
+        zoneSpec.tintHex,
+        zoneTintBlend * 0.35
+      );
+  const midSkyHex = isDaytime
+    ? dayKf.midSkyHex
+    : lerpHexColor(
+        lerpHexColor(kfA.midSkyHex, kfB.midSkyHex, smoothT),
+        zoneSpec.tintHex,
+        zoneTintBlend * 0.55
+      );
+  const horizonHex = isDaytime
+    ? dayKf.horizonHex
+    : lerpHexColor(
+        lerpHexColor(kfA.horizonHex, kfB.horizonHex, smoothT),
+        zoneSpec.tintHex,
+        zoneTintBlend * 0.75
+      );
+  const fogHex = isDaytime
+    ? dayKf.fogHex
+    : lerpHexColor(
+        lerpHexColor(kfA.fogHex, kfB.fogHex, smoothT),
+        zoneSpec.tintHex,
+        zoneTintBlend * 0.45
+      );
+
+  const sunColorHex = isDaytime
+    ? dayKf.sunColorHex
+    : lerpHexColor(
+        lerpHexColor(kfA.sunColorHex, kfB.sunColorHex, smoothT),
+        zoneSpec.tintHex,
+        zoneTintBlend * 0.5
+      );
+  const hemiSkyHex = lerpHexColor(
+    kfA.hemiSkyHex,
+    kfB.hemiSkyHex,
+    smoothT
+  );
+  const hemiGroundHex = lerpHexColor(
+    kfA.hemiGroundHex,
+    kfB.hemiGroundHex,
+    smoothT
+  );
+  const ambientHex = lerpHexColor(kfA.ambientHex, kfB.ambientHex, smoothT);
+  const rimLightHex = lerpHexColor(
+    lerpHexColor(kfA.rimLightHex, kfB.rimLightHex, smoothT),
+    zoneSpec.tintHex,
+    zoneTintBlend * 0.65
+  );
+
+  // Compute 3D orbital arc for Sun and Moon across the festival sky
+  // At dawn (0.125), sun rises in East (+X); at day (0.375), high overhead; at dusk (0.625), sets in West (-X)
+  const solarAngle = (nextTime - 0.125) * Math.PI * 2;
+  const orbitRadius = 62;
+  const sunX = Math.cos(solarAngle) * orbitRadius;
+  const sunY = Math.max(8, Math.sin(solarAngle) * 46 + 14);
+  const sunZ = 18 + Math.sin(solarAngle * 0.5) * 14;
+
+  const moonAngle = solarAngle + Math.PI;
+  const moonX = Math.cos(moonAngle) * orbitRadius;
+  const moonY = Math.max(12, Math.sin(moonAngle) * 44 + 16);
+  const moonZ = 18 + Math.cos(moonAngle * 0.5) * 14;
+
+  const phaseSpec = DAY_NIGHT_KEYFRAMES[phaseId];
+
+  const nextState: DayNightCycleState = {
+    timeOfDay: nextTime,
+    mode: activeMode,
+    currentZone: nextZone,
+    activeZoneDwellSec,
+    zoneDwellTotals: nextTotals,
+    zoneInfluenceStrength,
+  };
+
+  const atmosphere: DayNightAtmosphereProfile = {
+    phaseId,
+    sanskritLabel: phaseSpec.sanskritName,
+    shortPhaseLabel: phaseSpec.label,
+    clockLabel: formatTimeOfDayClock(nextTime),
+    timeOfDay: nextTime,
+    mode: activeMode,
+    zoneId: nextZone,
+    zoneName: zoneSpec.name,
+    zoneShortLabel: zoneSpec.shortLabel,
+    zoneAtmosphereHint: zoneSpec.atmosphereHint,
+    zoneAccentHex: zoneSpec.accentHex,
+    zoneDwellSec: Math.round(activeZoneDwellSec),
+    zoneInfluencePct: Math.round(zoneInfluenceStrength * 100),
+    zenithHex,
+    midSkyHex,
+    horizonHex,
+    fogHex,
+    fogDensity: isDaytime
+      ? dayKf.fogDensity
+      : Number(
+          (
+            lerpNum(kfA.fogDensity, kfB.fogDensity) * zoneSpec.fogMultiplier
+          ).toFixed(5)
+        ),
+    sunColorHex,
+    sunIntensity: isDaytime
+      ? dayKf.sunIntensity
+      : Number(lerpNum(kfA.sunIntensity, kfB.sunIntensity).toFixed(3)),
+    sunPosition: { x: sunX, y: sunY, z: sunZ },
+    moonPosition: { x: moonX, y: moonY, z: moonZ },
+    hemiSkyHex,
+    hemiGroundHex,
+    hemiIntensity: isDaytime
+      ? dayKf.hemiIntensity
+      : Number(lerpNum(kfA.hemiIntensity, kfB.hemiIntensity).toFixed(3)),
+    ambientHex,
+    ambientIntensity: isDaytime
+      ? dayKf.ambientIntensity
+      : Number(lerpNum(kfA.ambientIntensity, kfB.ambientIntensity).toFixed(3)),
+    rimLightHex,
+    rimIntensity: Number(
+      (
+        lerpNum(kfA.rimIntensity, kfB.rimIntensity) * zoneSpec.warmthMultiplier
+      ).toFixed(3)
+    ),
+    pointLightIntensityScale: Number(
+      (
+        lerpNum(kfA.pointLightIntensityScale, kfB.pointLightIntensityScale) *
+        zoneSpec.warmthMultiplier
+      ).toFixed(3)
+    ),
+    emissiveScale: Number(
+      lerpNum(kfA.emissiveScale, kfB.emissiveScale).toFixed(3)
+    ),
+    starVisibility: Number(
+      lerpNum(kfA.starVisibility, kfB.starVisibility).toFixed(3)
+    ),
+    fireflyActivity: Number(
+      lerpNum(kfA.fireflyActivity, kfB.fireflyActivity).toFixed(3)
+    ),
+    toneMappingExposure:
+      phaseId === 'dawn' || phaseId === 'day'
+        ? 0.75
+        : Number(
+            lerpNum(kfA.toneMappingExposure, kfB.toneMappingExposure).toFixed(3)
+          ),
+    bloomStrength: phaseId === 'dawn' || phaseId === 'day' ? 0.08 : 0.34,
+    bloomThreshold: phaseId === 'dawn' || phaseId === 'day' ? 0.96 : 0.88,
+  };
+
+  return { state: nextState, atmosphere };
+}
+
+// ============================================================================
+// WORLD-SPECIFIC GRAVITY & MOVEMENT PHYSICS MODIFIERS
+// - World 01 (Holi — Braj): Grounded wet-color mud drag around Haudi vats & puddles
+// - World 02 (Diwali — Ghat): Buoyant river boat-bobbing oscillation & gentle current
+// - Mela Central Hub: Springy carnival jump-padding platforms with high vertical arc
+// ============================================================================
+export interface JumpPadPlatformSpec {
+  id: string;
+  label: string;
+  x: number;
+  z: number;
+  radius: number;
+  impulseY: number;
+  colorHex: number;
+}
+
+export const MELA_JUMP_PAD_PLATFORMS: readonly JumpPadPlatformSpec[] = [
+  {
+    id: 'pad_plaza_east',
+    label: 'Aakash Utsav Bounce Pad · East',
+    x: 13.5,
+    z: 3.5,
+    radius: 2.25,
+    impulseY: 14.8,
+    colorHex: 0xf43f5e,
+  },
+  {
+    id: 'pad_carnival_entry',
+    label: 'Jhula Midway Launch Pad',
+    x: 23.5,
+    z: -10.5,
+    radius: 2.35,
+    impulseY: 15.6,
+    colorHex: 0xfbbf24,
+  },
+  {
+    id: 'pad_bazaar_arch',
+    label: 'Meena Bazaar Spring Pad · West',
+    x: -13.5,
+    z: 3.5,
+    radius: 2.25,
+    impulseY: 14.8,
+    colorHex: 0x38bdf8,
+  },
+] as const;
+
+export const HOLI_MUD_PUDDLE_ZONES: readonly {
+  x: number;
+  z: number;
+  radius: number;
+}[] = [
+  { x: -10.5, z: 3.5, radius: 4.2 },
+  { x: 10.5, z: 3.5, radius: 4.2 },
+  { x: -11.5, z: -13.5, radius: 4.2 },
+  { x: 11.5, z: -13.5, radius: 4.2 },
+  { x: 0.0, z: -6.5, radius: 3.6 },
+] as const;
+
+export interface WorldPhysicsModifiers {
+  gravityScale: number;
+  speedMultiplier: number;
+  inHoliMud: boolean;
+  onDiwaliRiver: boolean;
+  buoyancyYOffset: number;
+  riverDriftVx: number;
+  activeJumpPad: JumpPadPlatformSpec | null;
+}
+
+export function evaluateWorldPhysicsModifiers(params: {
+  activeWorld: FestivalWorldId;
+  playerX: number;
+  playerZ: number;
+  playerY: number;
+  elapsedSec: number;
+}): WorldPhysicsModifiers {
+  const { activeWorld, playerX, playerZ, playerY, elapsedSec } = params;
+
+  if (activeWorld === 'holi_braj') {
+    const inHoliMud =
+      playerY <= 0.35 &&
+      HOLI_MUD_PUDDLE_ZONES.some(
+        (z) => Math.hypot(playerX - z.x, playerZ - z.z) <= z.radius
+      );
+    return {
+      gravityScale: inHoliMud ? 1.18 : 1.0,
+      speedMultiplier: inHoliMud ? 0.68 : 1.0,
+      inHoliMud,
+      onDiwaliRiver: false,
+      buoyancyYOffset: 0,
+      riverDriftVx: 0,
+      activeJumpPad: null,
+    };
+  }
+
+  if (activeWorld === 'diwali_ghat') {
+    const onDiwaliRiver = playerZ >= -2.2;
+    const buoyancyYOffset = onDiwaliRiver
+      ? Math.sin(elapsedSec * 2.4 + playerX * 0.35) * 0.16 +
+        Math.cos(elapsedSec * 1.7 + playerZ * 0.25) * 0.08
+      : 0;
+    const riverDriftVx = onDiwaliRiver
+      ? Math.cos(elapsedSec * 0.45 + playerZ * 0.12) * 0.42
+      : 0;
+    return {
+      gravityScale: onDiwaliRiver ? 0.78 : 1.0,
+      speedMultiplier: onDiwaliRiver ? 0.92 : 1.0,
+      inHoliMud: false,
+      onDiwaliRiver,
+      buoyancyYOffset,
+      riverDriftVx,
+      activeJumpPad: null,
+    };
+  }
+
+  // mela_central: Check springy carnival jump-padding platforms
+  const activeJumpPad =
+    playerY <= 0.45
+      ? MELA_JUMP_PAD_PLATFORMS.find(
+          (pad) => Math.hypot(playerX - pad.x, playerZ - pad.z) <= pad.radius
+        ) ?? null
+      : null;
+
+  return {
+    gravityScale: 0.86,
+    speedMultiplier: 1.04,
+    inHoliMud: false,
+    onDiwaliRiver: false,
+    buoyancyYOffset: 0,
+    riverDriftVx: 0,
+    activeJumpPad,
+  };
+}
+
+// ============================================================================
+// PLAYER-RESPONSIVE ATMOSPHERIC PARTICLE SYSTEM
+// ('Holi Petal Swirls' & 'Diya Flickers' responding to player proximity & movement)
+// ============================================================================
+export type InteractiveParticleKind = 'holi_petal' | 'diya_flicker';
+
+export interface InteractiveAtmosphereParticle {
+  id: number;
+  anchorX: number;
+  anchorZ: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  phase: number;
+  swirlEnergy: number; // [0..1] boosted by player proximity and movement speed
+  scale: number;
+  colorIndex: number;
+}
+
+export function createInitialInteractiveParticles(
+  count = 64
+): InteractiveAtmosphereParticle[] {
+  const list: InteractiveAtmosphereParticle[] = [];
+  for (let i = 0; i < count; i++) {
+    // Distribute across the courtyard and ghat walkways (radius 4..26m)
+    const angle = i * 2.39996;
+    const rad = 4.2 + ((i * 37) % 220) * 0.1;
+    const ax = Math.cos(angle) * rad;
+    const az = Math.sin(angle) * rad - 3.5;
+    const baseY = 0.28 + ((i * 19) % 14) * 0.08;
+    list.push({
+      id: i,
+      anchorX: ax,
+      anchorZ: az,
+      x: ax,
+      y: baseY,
+      z: az,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      phase: (i * 0.77) % (Math.PI * 2),
+      swirlEnergy: 0,
+      scale: 0.55 + (i % 4) * 0.12,
+      colorIndex: i % 4,
+    });
+  }
+  return list;
+}
+
+export function stepInteractiveAtmosphereParticles(
+  particles: readonly InteractiveAtmosphereParticle[],
+  params: {
+    dt: number;
+    elapsedSec: number;
+    playerX: number;
+    playerY: number;
+    playerZ: number;
+    playerSpeed: number;
+    activeWorld: FestivalWorldId;
+    phaseId: DayNightPhaseId;
+  }
+): {
+  kind: InteractiveParticleKind;
+  particles: InteractiveAtmosphereParticle[];
+} {
+  const safeDt = clampDelta(params.dt);
+  const kind: InteractiveParticleKind =
+    params.activeWorld === 'diwali_ghat' ||
+    params.phaseId === 'night' ||
+    params.phaseId === 'dusk'
+      ? 'diya_flicker'
+      : 'holi_petal';
+
+  const proximityRadius = 8.5;
+  const speedFactor = Math.min(2.2, 0.35 + params.playerSpeed * 0.18);
+
+  const updated = particles.map((p) => {
+    const dx = p.x - params.playerX;
+    const dz = p.z - params.playerZ;
+    const dist = Math.hypot(dx, dz);
+
+    let nextEnergy = Math.max(0, p.swirlEnergy - safeDt * 0.85);
+    let vx = p.vx * Math.exp(-3.2 * safeDt);
+    let vy = p.vy * Math.exp(-2.8 * safeDt);
+    let vz = p.vz * Math.exp(-3.2 * safeDt);
+
+    if (dist < proximityRadius) {
+      const proxRatio = 1 - dist / proximityRadius;
+      nextEnergy = Math.min(1, nextEnergy + proxRatio * speedFactor * safeDt * 4.2);
+
+      // Tangential swirl + gentle outward wake around the moving player
+      const invDist = dist > 0.05 ? 1 / dist : 1;
+      const nx = dx * invDist;
+      const nz = dz * invDist;
+      const tx = -nz;
+      const tz = nx;
+
+      const swirlStrength = (1.6 + params.playerSpeed * 0.38) * proxRatio;
+      vx += (tx * swirlStrength + nx * 0.55 * proxRatio) * safeDt * 6.0;
+      vz += (tz * swirlStrength + nz * 0.55 * proxRatio) * safeDt * 6.0;
+      vy +=
+        (kind === 'diya_flicker' ? 1.45 : 1.15) *
+        proxRatio *
+        speedFactor *
+        safeDt *
+        4.5;
+    }
+
+    // Gentle spring tether back toward home anchor when calm
+    const homeDx = p.anchorX - p.x;
+    const homeDz = p.anchorZ - p.z;
+    vx += homeDx * 0.85 * safeDt;
+    vz += homeDz * 0.85 * safeDt;
+
+    const ambientFlutterX =
+      Math.sin(params.elapsedSec * 1.6 + p.phase) *
+      (kind === 'holi_petal' ? 0.42 : 0.25);
+    const ambientFlutterZ =
+      Math.cos(params.elapsedSec * 1.4 + p.phase) *
+      (kind === 'holi_petal' ? 0.42 : 0.25);
+
+    const nextX = p.x + (vx + ambientFlutterX) * safeDt;
+    const nextZ = p.z + (vz + ambientFlutterZ) * safeDt;
+
+    const baseBobY =
+      0.32 +
+      ((p.id * 19) % 14) * 0.08 +
+      Math.sin(params.elapsedSec * 2.2 + p.phase) * 0.14;
+    let nextY = p.y + vy * safeDt;
+    // Settle smoothly toward baseBobY + swirl lift
+    const targetY = baseBobY + nextEnergy * (kind === 'diya_flicker' ? 1.65 : 1.35);
+    nextY += (targetY - nextY) * Math.min(1, safeDt * 3.5);
+
+    return {
+      ...p,
+      x: nextX,
+      y: Math.max(0.18, Math.min(3.8, nextY)),
+      z: nextZ,
+      vx,
+      vy,
+      vz,
+      swirlEnergy: Number(nextEnergy.toFixed(4)),
+    };
+  });
+
+  return { kind, particles: updated };
+}
+
+// ============================================================================
+// AAA DYNAMIC CAMERA DIRECTOR — PURE MATHEMATICAL & COMPOSITIONAL SOLVERS
+// ============================================================================
+
+/**
+ * Cubic ease-in-out S-curve interpolation for 2.0s "One-Take" Dive Transitions
+ * and 0.8s Stall/Gondola camera transitions.
+ */
+export function cubicEaseInOut(t: number): number {
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+  return clamped < 0.5
+    ? 4 * clamped * clamped * clamped
+    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
+}
+
+/**
+ * Dual-frequency handheld camera breathing (±0.08m vertical, ±0.004 rad roll)
+ * so preview spline shots feel operated by a real cinematographer.
+ */
+export function computeHandheldBreathing(elapsedSec: number): {
+  verticalOffsetM: number;
+  horizontalOffsetM: number;
+  rollRad: number;
+} {
+  const t = Number.isFinite(elapsedSec) ? elapsedSec : 0;
+  const verticalOffsetM =
+    Math.sin(t * 1.35) * 0.052 + Math.cos(t * 2.45 + 0.7) * 0.028;
+  const horizontalOffsetM =
+    Math.cos(t * 0.95) * 0.035 + Math.sin(t * 1.85 + 1.2) * 0.018;
+  const rollRad =
+    Math.sin(t * 1.15 + 0.4) * 0.0026 + Math.cos(t * 2.1) * 0.0014;
+  return {
+    verticalOffsetM: Number(verticalOffsetM.toFixed(5)),
+    horizontalOffsetM: Number(horizontalOffsetM.toFixed(5)),
+    rollRad: Number(rollRad.toFixed(6)),
+  };
+}
+
+/**
+ * Context-Sensitive Monument / Vista Auto-Framing:
+ * When the player walks within 22 units of the Central Temple (0, -19) or
+ * the Aakash Jhula Giant Wheel (38, -25 in Mela Central Hub), pulls camera
+ * distance back from 5.2 up to 8.2 (+3.0m) and raises lookAt.y by up to +3.5m.
+ */
+export function evaluateVistaFramingOffset(params: {
+  playerX: number;
+  playerZ: number;
+  activeWorld: FestivalWorldId;
+}): {
+  vistaBlend: number; // [0..1]
+  extraDistance: number; // [0..3.0] -> total distance 5.2..8.2
+  extraLookAtY: number; // [0..3.5]
+  nearestLandmark: 'temple' | 'giant_wheel' | 'none';
+} {
+  const templeDist = Math.hypot(params.playerX - 0, params.playerZ - -19.0);
+  const wheelDist =
+    params.activeWorld === 'mela_central'
+      ? Math.hypot(params.playerX - 38.0, params.playerZ - -25.0)
+      : Infinity;
+
+  const minDist = Math.min(templeDist, wheelDist);
+  if (minDist >= 22.0) {
+    return {
+      vistaBlend: 0,
+      extraDistance: 0,
+      extraLookAtY: 0,
+      nearestLandmark: 'none',
+    };
+  }
+
+  // Smoothly ramp blend as player moves from 22m inward toward 6m
+  const rawRatio = Math.max(0, Math.min(1, (22.0 - minDist) / 16.0));
+  const vistaBlend = cubicEaseInOut(rawRatio);
+
+  return {
+    vistaBlend: Number(vistaBlend.toFixed(4)),
+    extraDistance: Number((vistaBlend * 3.0).toFixed(4)),
+    extraLookAtY: Number((vistaBlend * 3.5).toFixed(4)),
+    nearestLandmark: wheelDist < templeDist ? 'giant_wheel' : 'temple',
+  };
+}
+
+/**
+ * Computes target gameplay FOV:
+ * - Idle / Standing: 43°
+ * - Normal Walk (WASD): 46°
+ * - Marigold Dash / Sprint (Shift): 58°
+ * - Fire Gulal Recoil Impulse (80ms): -1.5°
+ */
+export function computeTargetGameplayFov(params: {
+  moveSpeed: number;
+  isSprintingOrDashing: boolean;
+  fireRecoilTimerSec: number;
+}): number {
+  let baseFov = 43.0;
+  if (params.isSprintingOrDashing) {
+    baseFov = 58.0;
+  } else if (params.moveSpeed > 0.35) {
+    baseFov = 46.0;
+  }
+
+  const recoilDip = params.fireRecoilTimerSec > 0 ? -1.5 : 0;
+  return Number((baseFov + recoilDip).toFixed(2));
+}
+
+/**
+ * Cornering Dutch Roll:
+ * When the player strafes (A/D) or turns rapidly while moving, banks the camera
+ * roll by up to ±2.5 degrees (±0.043 rad) into the turn, returning to 0 when straight.
+ */
+export function computeCorneringDutchRoll(params: {
+  strafeInputX: number; // -1 (left/A) .. +1 (right/D)
+  yawRateRadPerSec: number;
+  moveSpeed: number;
+}): number {
+  const MAX_ROLL_RAD = 0.043; // ~2.5 degrees
+  const speedScale = Math.max(0, Math.min(1, params.moveSpeed / 6.0));
+  const strafeTerm = -params.strafeInputX * MAX_ROLL_RAD * 0.85;
+  const turnTerm =
+    Math.max(-1, Math.min(1, params.yawRateRadPerSec / 3.5)) *
+    MAX_ROLL_RAD *
+    0.55 *
+    speedScale;
+
+  const combined = Math.max(
+    -MAX_ROLL_RAD,
+    Math.min(MAX_ROLL_RAD, strafeTerm + turnTerm)
+  );
+  return Number(combined.toFixed(5));
+}
+
+/**
+ * Computes the desired Over-The-Shoulder Spring-Arm Camera Pose and Velocity Look-Ahead Target,
+ * incorporating Rule-of-Thirds offset (x: +0.65, y: 2.1, base distance: 5.2),
+ * Vista Auto-Framing, Lotus Shield Low-Angle Orbit (+1.8m dolly, 0.3 rad/s),
+ * and Fireworks Sky-Tracking (+6.0m vertical lookAt lift for 1.8s).
+ */
+export function computeSpringArmDesiredPose(params: {
+  playerX: number;
+  playerY: number;
+  playerZ: number;
+  velocityX: number;
+  velocityZ: number;
+  activeWorld: FestivalWorldId;
+  shieldActive: boolean;
+  fireworkLookUpTimerSec: number;
+  elapsedSec: number;
+}): {
+  desiredCamX: number;
+  desiredCamY: number;
+  desiredCamZ: number;
+  desiredLookAtX: number;
+  desiredLookAtY: number;
+  desiredLookAtZ: number;
+  desiredDistance: number;
+} {
+  const vista = evaluateVistaFramingOffset({
+    playerX: params.playerX,
+    playerZ: params.playerZ,
+    activeWorld: params.activeWorld,
+  });
+
+  // Base distance 5.2m -> up to 8.2m near monuments, +1.8m during Lotus Shield
+  const shieldDolly = params.shieldActive ? 1.8 : 0;
+  const desiredDistance = 5.2 + vista.extraDistance + shieldDolly;
+
+  // Lotus shield slow heroic low-angle orbit (0.3 rad/s)
+  const shieldOrbitAngle = params.shieldActive ? params.elapsedSec * 0.3 : 0;
+  const sinOrbit = Math.sin(shieldOrbitAngle);
+  const cosOrbit = Math.cos(shieldOrbitAngle);
+
+  // Rule-of-Thirds Right-Shoulder Local Offset: x = +0.65, y = 2.1 (or 1.55 heroic low angle when shield active)
+  const localRightOffset = 0.65;
+  const localHeightOffset = params.shieldActive ? 1.55 : 2.1 + vista.vistaBlend * 0.45;
+
+  const worldOffsetX =
+    localRightOffset * cosOrbit + desiredDistance * sinOrbit;
+  const worldOffsetZ =
+    -localRightOffset * sinOrbit + desiredDistance * cosOrbit;
+
+  const desiredCamX = params.playerX + worldOffsetX;
+  const desiredCamY = params.playerY + localHeightOffset;
+  const desiredCamZ = params.playerZ + worldOffsetZ;
+
+  // Velocity Look-Ahead: offset up to 1.8 units ahead of player's current velocity vector (playerPos + velocity * 0.25)
+  const rawLeadX = params.velocityX * 0.25;
+  const rawLeadZ = params.velocityZ * 0.25;
+  const leadMag = Math.hypot(rawLeadX, rawLeadZ);
+  const leadClampScale = leadMag > 1.8 ? 1.8 / leadMag : 1.0;
+  const lookAheadX = rawLeadX * leadClampScale;
+  const lookAheadZ = rawLeadZ * leadClampScale;
+
+  // Fireworks Sky-Tracking (+6.0 units upward tilt with smooth envelope over 1.8s)
+  let fireworkLiftY = 0;
+  if (params.fireworkLookUpTimerSec > 0) {
+    const fwNorm = Math.max(0, Math.min(1, params.fireworkLookUpTimerSec / 1.8));
+    // Smooth bell envelope so it tilts up and returns smoothly to horizon
+    const fwEnvelope = Math.sin(fwNorm * Math.PI);
+    fireworkLiftY = 6.0 * fwEnvelope;
+  }
+
+  // Forward sightline anchor (-3.6m toward festival plaza ahead + velocity look-ahead)
+  const desiredLookAtX = params.playerX + 0.28 + lookAheadX;
+  const desiredLookAtY =
+    params.playerY + 1.55 + vista.extraLookAtY + fireworkLiftY;
+  const desiredLookAtZ = params.playerZ - 3.6 + lookAheadZ;
+
+  return {
+    desiredCamX: Number(desiredCamX.toFixed(4)),
+    desiredCamY: Number(desiredCamY.toFixed(4)),
+    desiredCamZ: Number(desiredCamZ.toFixed(4)),
+    desiredLookAtX: Number(desiredLookAtX.toFixed(4)),
+    desiredLookAtY: Number(desiredLookAtY.toFixed(4)),
+    desiredLookAtZ: Number(desiredLookAtZ.toFixed(4)),
+    desiredDistance: Number(desiredDistance.toFixed(4)),
+  };
+}
+
+/**
+ * Anti-Clip Camera Collision Whisker Distance Resolver:
+ * If a raycast from the player's head/shoulder anchor (playerPos + (0, 1.6, 0))
+ * hits world architecture at distance d < desiredDistance, pulls the camera
+ * forward to d - 0.35 (clamped to >= 1.1m).
+ */
+export function resolveWhiskerCollisionDistance(
+  desiredDistance: number,
+  hitDistance: number | null
+): number {
+  if (hitDistance === null || !Number.isFinite(hitDistance)) {
+    return desiredDistance;
+  }
+  if (hitDistance < desiredDistance) {
+    return Number(Math.max(1.1, hitDistance - 0.35).toFixed(4));
+  }
+  return desiredDistance;
+}
+
+
+
