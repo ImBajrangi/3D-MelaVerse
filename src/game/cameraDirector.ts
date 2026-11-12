@@ -496,16 +496,31 @@ export class MelaCameraDirector {
       // Throttle raycast to every 3rd frame to maintain locked 60 FPS
       this.whiskerFrameCounter = (this.whiskerFrameCounter + 1) % 3;
       if (this.whiskerFrameCounter === 0) {
+        this.raycaster.camera = camera;
         this.raycaster.set(this._anchorOrigin, this._rayDir);
         this.raycaster.near = 0.4;
         this.raycaster.far = fullRayLen;
-        const hits = this.raycaster.intersectObjects(input.colliderMeshes, true);
-        const solidArchHit = hits.find(
-          (h) =>
-            h.point.y > 0.45 &&
-            (h.object as THREE.Mesh).isMesh &&
-            h.object.visible
-        );
+
+        // Collect only visible solid THREE.Mesh objects (strictly excluding THREE.Sprite and THREE.Points)
+        const solidMeshes: THREE.Object3D[] = [];
+        for (let i = 0; i < input.colliderMeshes.length; i++) {
+          const rootObj = input.colliderMeshes[i];
+          if (!rootObj || !rootObj.visible) continue;
+          rootObj.traverseVisible((child) => {
+            const asMesh = child as THREE.Mesh;
+            if (
+              asMesh.isMesh &&
+              !(child as THREE.Sprite).isSprite &&
+              !(child as THREE.Points).isPoints &&
+              !(child as THREE.InstancedMesh).isInstancedMesh
+            ) {
+              solidMeshes.push(asMesh);
+            }
+          });
+        }
+
+        const hits = this.raycaster.intersectObjects(solidMeshes, false);
+        const solidArchHit = hits.find((h) => h.point.y > 0.45);
         this.lastCachedHitDist = solidArchHit ? solidArchHit.distance : null;
       }
       const safeDist = resolveWhiskerCollisionDistance(
