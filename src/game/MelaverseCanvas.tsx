@@ -30,6 +30,8 @@ import {
   stepInteractiveAtmosphereParticles,
   MELA_JUMP_PAD_PLATFORMS,
   evaluateWorldPhysicsModifiers,
+  computeCameraRelativeMoveVector,
+  dampAngleRad,
   type GameState,
   type FestivalWorldId,
   type GulalColorId,
@@ -75,6 +77,13 @@ import {
 import { createPBRMaterial } from './pbrMaterials';
 import { MelaCameraDirector } from './cameraDirector';
 import { ProceduralCrowdSystem } from './proceduralCrowd';
+import {
+  createInitialWeatherState,
+  stepWeatherSystem,
+  type WeatherState,
+} from './weatherSystem';
+import { PhysicsInteraction } from './physicsInteraction';
+import { WeatherVfxSystem } from './weatherVfx';
 import {
   GRAPHICS_PRESETS,
   type GraphicsQualityPreset,
@@ -131,6 +140,13 @@ export interface HudSnapshot {
   adaptiveDifficulty: AdaptiveDifficultyProfile;
   karma: KarmaState;
   dayNight: DayNightAtmosphereProfile;
+  weather?: {
+    weatherId: string;
+    label: string;
+    shortBadge: string;
+    rainIntensity: number;
+    windSpeed: number;
+  };
   playerX: number;
   playerY: number;
   playerZ: number;
@@ -3108,6 +3124,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     const decalGeo = new THREE.CircleGeometry(1.15, 14);
     decalGeo.rotateX(-Math.PI / 2);
     let decalCursor = 0;
+    const decalOpacities = new Float32Array(MAX_GULAL_DECALS);
     const gulalDecalPool = Array.from({ length: MAX_GULAL_DECALS }, () => {
       const m = new THREE.Mesh(
         decalGeo,
@@ -3132,13 +3149,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       colorHex: number,
       scaleMult = 1
     ) => {
-      const decal = gulalDecalPool[decalCursor];
+      const idx = decalCursor;
+      const decal = gulalDecalPool[idx];
       decalCursor = (decalCursor + 1) % MAX_GULAL_DECALS;
       decal.position.set(gx, 0.024 + (decalCursor % 5) * 0.001, gz);
       decal.rotation.y = Math.random() * Math.PI * 2;
       const s = (0.75 + Math.random() * 0.65) * scaleMult;
       decal.scale.set(s, 1, s);
-      (decal.material as THREE.MeshStandardMaterial).color.setHex(colorHex);
+      const mat = decal.material as THREE.MeshStandardMaterial;
+      mat.color.setHex(colorHex);
+      mat.opacity = 0.72;
+      decalOpacities[idx] = 0.72;
       decal.visible = true;
     };
 
@@ -4204,6 +4225,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     scene.add(particleInstanced);
 
     const pActive = new Uint8Array(MAX_PARTICLES);
+    const pIsFirework = new Uint8Array(MAX_PARTICLES);
     const pX = new Float32Array(MAX_PARTICLES);
     const pY = new Float32Array(MAX_PARTICLES);
     const pZ = new Float32Array(MAX_PARTICLES);
@@ -4234,22 +4256,24 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       bz: number,
       colorHex: number,
       count: number,
-      speedSpread = 6.5
+      speedSpread = 6.5,
+      isFirework = false
     ) => {
       _dummyColor.setHex(colorHex);
       for (let c = 0; c < count; c++) {
         const idx = particleCursor;
         particleCursor = (particleCursor + 1) % MAX_PARTICLES;
         pActive[idx] = 1;
+        pIsFirework[idx] = isFirework ? 1 : 0;
         pX[idx] = bx + (Math.random() - 0.5) * 0.4;
         pY[idx] = by + (Math.random() - 0.5) * 0.4;
         pZ[idx] = bz + (Math.random() - 0.5) * 0.4;
         const angle = Math.random() * Math.PI * 2;
         const spd = (0.35 + Math.random() * 0.65) * speedSpread;
         pVx[idx] = Math.cos(angle) * spd;
-        pVy[idx] = 2.4 + Math.random() * 4.8;
+        pVy[idx] = (isFirework ? 3.2 : 2.4) + Math.random() * (isFirework ? 6.2 : 4.8);
         pVz[idx] = Math.sin(angle) * spd;
-        pMaxLife[idx] = 0.5 + Math.random() * 0.4;
+        pMaxLife[idx] = (isFirework ? 0.95 : 0.5) + Math.random() * (isFirework ? 0.65 : 0.4);
         pLife[idx] = pMaxLife[idx];
         pScale[idx] = 0.75 + Math.random() * 0.95;
         particleInstanced.setColorAt(idx, _dummyColor);
@@ -4546,17 +4570,21 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let lastPhotoPointerX = 0;
     let lastPhotoPointerY = 0;
 
-    // Smooth Third-Person Right-Drag Orbit & Mousewheel Zoom
+    // Dual-Mode Game-Friendly Third-Person Orbit (Left-Drag, Right-Drag, PointerLock & Mousewheel Zoom)
+    let leftButtonDown = false;
+    let leftDragStartX = 0;
+    let leftDragStartY = 0;
+    let leftDragMoved = false;
+    let leftButtonDownAtMs = 0;
+    let lastLeftPointerX = 0;
+    let lastLeftPointerY = 0;
+
     let rightButtonDown = false;
     let rightDragStartX = 0;
     let rightDragStartY = 0;
     let rightDragMoved = false;
     let lastRightPointerX = 0;
     let lastRightPointerY = 0;
-    let gameplayOrbitYaw = 0;
-    let gameplayOrbitPitch = 0;
-    let gameplayZoomOffset = 0;
-    let gameplayOrbitIdleTimer = 0;
 
     const updateCursorWorldFromPointer = (e: PointerEvent, isClick: boolean) => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -4586,11 +4614,20 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         return;
       }
       if (e.button === 0) {
-        pointerJustClicked = true;
-        pointerIsDown = true;
+        leftButtonDown = true;
+        leftDragMoved = false;
+        leftButtonDownAtMs = performance.now();
+        leftDragStartX = e.clientX;
+        leftDragStartY = e.clientY;
+        lastLeftPointerX = e.clientX;
+        lastLeftPointerY = e.clientY;
         lastRidePointerX = e.clientX;
         lastRidePointerY = e.clientY;
-        updateCursorWorldFromPointer(e, true);
+        // In PointerLock mode, immediate LMB fires Gulal toward center crosshair
+        if (document.pointerLockElement === renderer.domElement) {
+          pointerJustClicked = true;
+          pointerIsDown = true;
+        }
       } else if (e.button === 2) {
         rightButtonDown = true;
         rightDragMoved = false;
@@ -4602,65 +4639,113 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     };
 
     const handleCanvasPointerMove = (e: PointerEvent) => {
-      if (propsRef.current.gameState === 'playing') {
-        if (propsRef.current.isPhotoMode) {
-          if (pointerIsDown) {
-            const dx = e.clientX - lastPhotoPointerX;
-            const dy = e.clientY - lastPhotoPointerY;
-            if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
-              photoOrbitYaw -= dx * 0.0075;
-              photoOrbitPitch = Math.max(
-                -0.55,
-                Math.min(0.85, photoOrbitPitch - dy * 0.006)
-              );
-            }
-            lastPhotoPointerX = e.clientX;
-            lastPhotoPointerY = e.clientY;
-          }
-          return;
-        }
-        if (rightButtonDown && !propsRef.current.mountedRide) {
-          const totalDist = Math.hypot(
-            e.clientX - rightDragStartX,
-            e.clientY - rightDragStartY
-          );
-          if (totalDist > 6) {
-            rightDragMoved = true;
-          }
-          const dx = e.clientX - lastRightPointerX;
-          const dy = e.clientY - lastRightPointerY;
+      if (propsRef.current.gameState !== 'playing') return;
+      if (propsRef.current.isPhotoMode) {
+        if (pointerIsDown) {
+          const dx = e.clientX - lastPhotoPointerX;
+          const dy = e.clientY - lastPhotoPointerY;
           if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
-            gameplayOrbitYaw -= dx * 0.0055;
-            gameplayOrbitPitch = Math.max(
-              -0.32,
-              Math.min(0.55, gameplayOrbitPitch + dy * 0.004)
-            );
-            gameplayOrbitIdleTimer = 3.5;
-          }
-          lastRightPointerX = e.clientX;
-          lastRightPointerY = e.clientY;
-          return;
-        }
-        if (propsRef.current.mountedRide) {
-          const dx = e.clientX - lastRidePointerX;
-          const dy = e.clientY - lastRidePointerY;
-          if (pointerIsDown && Math.abs(dx) < 120 && Math.abs(dy) < 120) {
-            rideLookYawOffset -= dx * 0.0065;
-            rideLookPitchOffset = Math.max(
-              -0.75,
-              Math.min(0.75, rideLookPitchOffset - dy * 0.005)
+            photoOrbitYaw -= dx * 0.0075;
+            photoOrbitPitch = Math.max(
+              -0.55,
+              Math.min(0.85, photoOrbitPitch - dy * 0.006)
             );
           }
-          lastRidePointerX = e.clientX;
-          lastRidePointerY = e.clientY;
-        } else {
-          updateCursorWorldFromPointer(e, pointerIsDown);
+          lastPhotoPointerX = e.clientX;
+          lastPhotoPointerY = e.clientY;
         }
+        return;
       }
+
+      if (propsRef.current.mountedRide) {
+        const dx = e.clientX - lastRidePointerX;
+        const dy = e.clientY - lastRidePointerY;
+        if (
+          (leftButtonDown || document.pointerLockElement === renderer.domElement) &&
+          Math.abs(dx) < 120 &&
+          Math.abs(dy) < 120
+        ) {
+          const moveDx =
+            document.pointerLockElement === renderer.domElement ? e.movementX : dx;
+          const moveDy =
+            document.pointerLockElement === renderer.domElement ? e.movementY : dy;
+          rideLookYawOffset -= moveDx * 0.0065;
+          rideLookPitchOffset = Math.max(
+            -0.75,
+            Math.min(0.75, rideLookPitchOffset - moveDy * 0.005)
+          );
+        }
+        lastRidePointerX = e.clientX;
+        lastRidePointerY = e.clientY;
+        return;
+      }
+
+      // PointerLock free mouse look
+      if (document.pointerLockElement === renderer.domElement) {
+        if (Math.abs(e.movementX) < 180 && Math.abs(e.movementY) < 180) {
+          cameraDirector.orbitByDelta(-e.movementX * 0.0032, e.movementY * 0.0028);
+        }
+        return;
+      }
+
+      // Right-Drag Orbit
+      if (rightButtonDown) {
+        const totalDist = Math.hypot(
+          e.clientX - rightDragStartX,
+          e.clientY - rightDragStartY
+        );
+        if (totalDist > 6) {
+          rightDragMoved = true;
+        }
+        const dx = e.clientX - lastRightPointerX;
+        const dy = e.clientY - lastRightPointerY;
+        if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
+          cameraDirector.orbitByDelta(-dx * 0.0055, dy * 0.0042);
+        }
+        lastRightPointerX = e.clientX;
+        lastRightPointerY = e.clientY;
+        return;
+      }
+
+      // Left-Drag Orbit (also works seamlessly on laptop trackpads!)
+      if (leftButtonDown) {
+        const totalDist = Math.hypot(
+          e.clientX - leftDragStartX,
+          e.clientY - leftDragStartY
+        );
+        if (totalDist > 6) {
+          leftDragMoved = true;
+          pointerIsDown = false;
+        }
+        if (leftDragMoved) {
+          const dx = e.clientX - lastLeftPointerX;
+          const dy = e.clientY - lastLeftPointerY;
+          if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
+            cameraDirector.orbitByDelta(-dx * 0.0055, dy * 0.0042);
+          }
+        }
+        lastLeftPointerX = e.clientX;
+        lastLeftPointerY = e.clientY;
+        return;
+      }
+
+      updateCursorWorldFromPointer(e, false);
     };
 
     const handleWindowPointerUp = (e: PointerEvent) => {
-      if (e.button === 0 || !rightButtonDown) {
+      if (e.button === 0) {
+        if (
+          leftButtonDown &&
+          !leftDragMoved &&
+          propsRef.current.gameState === 'playing' &&
+          !propsRef.current.isPhotoMode &&
+          !propsRef.current.mountedRide &&
+          document.pointerLockElement !== renderer.domElement
+        ) {
+          pointerJustClicked = true;
+        }
+        leftButtonDown = false;
+        leftDragMoved = false;
         pointerIsDown = false;
       }
       if (e.button === 2 && rightButtonDown) {
@@ -4691,10 +4776,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         !propsRef.current.activeStallModal
       ) {
         e.preventDefault();
-        gameplayZoomOffset = Math.max(
-          -1.4,
-          Math.min(3.2, gameplayZoomOffset + e.deltaY * 0.0028)
-        );
+        cameraDirector.zoomByDelta(e.deltaY * 0.0038);
       }
     };
 
@@ -4895,6 +4977,10 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let hitstopTimer = 0;
     let screenShakeState: ScreenShakeState = createInitialScreenShakeState();
     const cameraDirector = new MelaCameraDirector();
+    let weatherState: WeatherState = createInitialWeatherState(
+      propsRef.current.activeWorld
+    );
+    const weatherVfx = new WeatherVfxSystem(scene);
     const replayRecorder = new ReplayRecorder(30);
     let replayPlaybackTime = 0;
     let lastReplayActive = false;
@@ -5030,10 +5116,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       screenShakeState = createInitialScreenShakeState();
       karmaState = createInitialKarmaState();
       replayRecorder.reset();
-      gameplayOrbitYaw = 0;
-      gameplayOrbitPitch = 0;
-      gameplayZoomOffset = 0;
+      cameraDirector.resetBehindPlayer(playerYaw);
+      leftButtonDown = false;
+      leftDragMoved = false;
       rightButtonDown = false;
+      rightDragMoved = false;
       clearAllInputs();
 
       // All 6 Diyas start unlit so the player genuinely lights them
@@ -5351,16 +5438,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       magnetFirePulseTimer = 0.38;
       const candidates = buildMagnetCandidates();
 
+      const activeCamYaw = cameraDirector.getCurrentYaw();
+      const camFwdX = Math.sin(activeCamYaw);
+      const camFwdZ = Math.cos(activeCamYaw);
+      // Center-crosshair camera-forward aim (ensures Space / LMB shoots straight ahead of camera)
       const rawAimX = hasClickWorldTarget
         ? clickWorldX
-        : hasCursorWorld
-        ? cursorWorldX
-        : playerX + Math.sin(playerYaw) * 6.5;
+        : playerX + camFwdX * 14.0;
       const rawAimZ = hasClickWorldTarget
         ? clickWorldZ
-        : hasCursorWorld
-        ? cursorWorldZ
-        : playerZ + Math.cos(playerYaw) * 6.5;
+        : playerZ + camFwdZ * 14.0;
       hasClickWorldTarget = false;
 
       const magnetRes = computeSoftMagnetReticle({
@@ -5368,7 +5455,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         rawAimZ,
         playerX,
         playerZ,
-        playerYaw,
+        playerYaw: activeCamYaw,
         isFiring: true,
         candidates,
       });
@@ -5396,8 +5483,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       cameraDirector.triggerFireGulalRecoil();
       screenShakeState = triggerScreenShake(screenShakeState, {
         traumaDelta: 0.16,
-        dirX: -Math.sin(playerYaw),
-        dirZ: -Math.cos(playerYaw),
+        dirX: -camFwdX,
+        dirZ: -camFwdZ,
         verticalKick: 0.06,
         frequencyHz: 28,
       });
@@ -5407,7 +5494,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         lastHudEmitTime = 0;
       }
 
-      playerYaw = magnetRes.aimYaw;
+      // Instantly align character's back to camera / aim direction so shots fire cleanly toward center crosshair
+      playerYaw = magnetRes.lockedTarget ? magnetRes.aimYaw : activeCamYaw;
       playerModel.root.rotation.y = playerYaw;
       if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
         replayRecorder.recordAction({
@@ -5680,9 +5768,9 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           propsRef.current.activeWorld === 'diwali_ghat'
             ? 14 + (b % 3) * 3.5
             : -11 - (b % 3) * 4;
-        // Ascending whistling trail + multi-stage aerial burst
-        spawnParticleBurst(fx, fy * 0.45, fz, 0xfde047, 8, 5.5);
-        spawnParticleBurst(fx, fy, fz, fwColors[b % fwColors.length], 26, 10.2);
+        // Ascending whistling trail + multi-stage aerial burst with wind-blown firework physics
+        spawnParticleBurst(fx, fy * 0.45, fz, 0xfde047, 8, 5.5, true);
+        spawnParticleBurst(fx, fy, fz, fwColors[b % fwColors.length], 26, 10.2, true);
       }
       score += 75;
       bestScore = Math.max(bestScore, score);
@@ -6145,6 +6233,34 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       dayNightState = dayNightStep.state;
       const atmosphere = dayNightStep.atmosphere;
 
+      // Step Procedural Weather System & 3D Weather VFX (Monsoon Rain, River Breeze, Gusts)
+      weatherState = stepWeatherSystem(weatherState, {
+        dt,
+        elapsedSec: elapsedTotal,
+        activeWorld: currentProps.activeWorld,
+      });
+      weatherVfx.step({
+        dt,
+        elapsedSec: elapsedTotal,
+        weather: weatherState,
+        centerX: isMenuPreview ? 0 : playerX,
+        centerZ: isMenuPreview ? 0 : playerZ,
+        cameraYaw: cameraDirector.getCurrentYaw(),
+      });
+
+      // Weather-driven Gulal ground splatter wash-away (rain washes splatters away much faster!)
+      const gulalWashRate = PhysicsInteraction.computeGulalWashRate(weatherState, 0.014);
+      for (let dIdx = 0; dIdx < MAX_GULAL_DECALS; dIdx++) {
+        const decal = gulalDecalPool[dIdx];
+        if (!decal.visible) continue;
+        decalOpacities[dIdx] = Math.max(0, decalOpacities[dIdx] - gulalWashRate * dt);
+        if (decalOpacities[dIdx] <= 0.02) {
+          decal.visible = false;
+        } else {
+          (decal.material as THREE.MeshStandardMaterial).opacity = decalOpacities[dIdx];
+        }
+      }
+
       // Update Sky Dome Vertex Gradient when colors shift
       const nextSkyKey = `${atmosphere.zenithHex}-${atmosphere.midSkyHex}-${atmosphere.horizonHex}`;
       if (nextSkyKey !== lastSkyColorKey) {
@@ -6430,12 +6546,26 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           particleInstanced.setMatrixAt(i, _dummyObj.matrix);
           continue;
         }
-        pVy[i] -= 7.6 * dt;
-        pX[i] +=
-          (pVx[i] + Math.sin(elapsedTotal * 4.2 + i) * 0.55) * dt;
-        pY[i] = Math.max(0.05, pY[i] + pVy[i] * dt);
-        pZ[i] +=
-          (pVz[i] + Math.cos(elapsedTotal * 3.8 + i) * 0.55) * dt;
+        const steppedPt = PhysicsInteraction.stepWindBlownParticle({
+          x: pX[i],
+          y: pY[i],
+          z: pZ[i],
+          vx: pVx[i],
+          vy: pVy[i],
+          vz: pVz[i],
+          gravity: 7.6,
+          weather: weatherState,
+          elapsedSec: elapsedTotal,
+          particleSeed: i,
+          dt,
+          isFirework: pIsFirework[i] === 1,
+        });
+        pVx[i] = steppedPt.vx;
+        pVy[i] = steppedPt.vy;
+        pVz[i] = steppedPt.vz;
+        pX[i] = steppedPt.x;
+        pY[i] = steppedPt.y;
+        pZ[i] = steppedPt.z;
         const lifeRatio = pLife[i] / pMaxLife[i];
         _dummyObj.position.set(pX[i], pY[i], pZ[i]);
         // Expand scale over lifetime for volumetric powder mist
@@ -6530,6 +6660,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             adaptiveDifficulty: adaptiveProfile,
             karma: karmaState,
             dayNight: atmosphere,
+            weather: {
+              weatherId: weatherState.weatherId,
+              label: weatherState.label,
+              shortBadge: weatherState.shortBadge,
+              rainIntensity: weatherState.rainIntensity,
+              windSpeed: weatherState.windSpeed,
+            },
             playerX,
             playerY,
             playerZ,
@@ -6754,7 +6891,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           }
         }
 
-        // Player-driven attack trigger (Space, J, or Left-Click / Hold)
+        // Player-driven attack trigger (Space, J, stationary LMB click/hold)
+        const stationaryLmbHold =
+          leftButtonDown &&
+          !leftDragMoved &&
+          performance.now() - leftButtonDownAtMs > 180;
         if (
           !currentProps.isPhotoMode &&
           (keysJustPressed.has('Space') ||
@@ -6762,7 +6903,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             keysHeld.has('Space') ||
             keysHeld.has('KeyJ') ||
             pointerJustClicked ||
-            pointerIsDown)
+            pointerIsDown ||
+            stationaryLmbHold)
         ) {
           attackBufferTimer = 0.15;
         }
@@ -6823,46 +6965,36 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             }
           }
 
-          // Gently auto-recenter manual camera orbit after 3.5s idle when player moves
-          if (!rightButtonDown) {
-            if (gameplayOrbitIdleTimer > 0) {
-              gameplayOrbitIdleTimer = Math.max(0, gameplayOrbitIdleTimer - simDt);
-            } else if (Math.hypot(frameVelocityX, frameVelocityZ) > 0.8) {
-              gameplayOrbitYaw *= Math.exp(-1.6 * simDt);
-              gameplayOrbitPitch *= Math.exp(-1.6 * simDt);
-            }
-          }
-          if (keysJustPressed.has('KeyC')) {
-            gameplayOrbitYaw = 0;
-            gameplayOrbitPitch = 0;
-            gameplayZoomOffset = 0;
-          }
-
           // Mobile touch-drag camera look delta
           if (Math.abs(currentProps.mobileLookDeltaYaw) > 0.0001) {
-            playerYaw += currentProps.mobileLookDeltaYaw;
+            cameraDirector.orbitByDelta(currentProps.mobileLookDeltaYaw, 0);
           }
 
-          let moveX = currentProps.isPhotoMode ? 0 : currentProps.mobileMoveVec.dx;
-          let moveZ = currentProps.isPhotoMode ? 0 : currentProps.mobileMoveVec.dz;
+          // Camera-Relative WASD Movement (projected onto XZ plane from current camera yaw)
+          const activeCamYawForMove = cameraDirector.getCurrentYaw();
+          let forwardInput = currentProps.isPhotoMode ? 0 : -currentProps.mobileMoveVec.dz;
+          let rightInput = currentProps.isPhotoMode ? 0 : currentProps.mobileMoveVec.dx;
           if (!currentProps.isPhotoMode) {
-            if (keysHeld.has('KeyW') || keysHeld.has('ArrowUp')) moveZ -= 1;
-            if (keysHeld.has('KeyS') || keysHeld.has('ArrowDown')) moveZ += 1;
-            if (keysHeld.has('KeyA') || keysHeld.has('ArrowLeft')) moveX -= 1;
-            if (keysHeld.has('KeyD') || keysHeld.has('ArrowRight')) moveX += 1;
+            if (keysHeld.has('KeyW') || keysHeld.has('ArrowUp')) forwardInput += 1;
+            if (keysHeld.has('KeyS') || keysHeld.has('ArrowDown')) forwardInput -= 1;
+            if (keysHeld.has('KeyA') || keysHeld.has('ArrowLeft')) rightInput -= 1;
+            if (keysHeld.has('KeyD') || keysHeld.has('ArrowRight')) rightInput += 1;
           }
 
-          let moveLen = Math.hypot(moveX, moveZ);
+          const camRelMove = computeCameraRelativeMoveVector({
+            forwardInput,
+            rightInput,
+            camYawRad: activeCamYawForMove,
+          });
+          let moveX = camRelMove.moveX;
+          let moveZ = camRelMove.moveZ;
+          let moveLen = camRelMove.magnitude;
+
           if (moveLen > 0.01 && !currentProps.mountedRide) {
             // Manual movement overrides any auto-stride
             autoStrideTimer = 0;
-            moveX /= moveLen;
-            moveZ /= moveLen;
             const targetYaw = Math.atan2(moveX, moveZ);
-            let angleDiff = targetYaw - playerYaw;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            playerYaw += angleDiff * (1 - Math.exp(-14 * simDt));
+            playerYaw = dampAngleRad(playerYaw, targetYaw, 12, simDt);
           } else if (autoStrideTimer > 0 && !currentProps.mountedRide) {
             autoStrideTimer = Math.max(0, autoStrideTimer - simDt);
             const sDx = autoStrideX - playerX;
@@ -6872,6 +7004,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               moveX = sDx / sDist;
               moveZ = sDz / sDist;
               moveLen = 1;
+              playerYaw = dampAngleRad(playerYaw, Math.atan2(moveX, moveZ), 12, simDt);
             } else {
               autoStrideTimer = 0;
             }
@@ -6906,10 +7039,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             });
           }
 
-          // Evaluate World-Specific Gravity & Movement Physics Modifiers:
-          // - World 01 (holi_braj): Slower movement in Holi mud around Haudi vats & wet color puddles
-          // - World 02 (diwali_ghat): Boat-bobbing wave oscillation & river drift on the Diwali river
-          // - World 03 (mela_central): Springy carnival jump-padding platforms
+          // Evaluate World-Specific & Procedural Weather Physics Modifiers
           const worldPhys = evaluateWorldPhysicsModifiers({
             activeWorld: currentProps.activeWorld,
             playerX,
@@ -6940,9 +7070,21 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             spawnParticleBurst(playerX, 0.35, playerZ, trailHexInt, 2, 3.2);
           }
 
+          // Weather physics coupling (rain drag + crosswind drift) via PhysicsInteraction
+          const weatherVel = PhysicsInteraction.modifyCharacterVelocity({
+            vx: stepVx,
+            vz: stepVz,
+            weather: weatherState,
+            isDashing: dashActiveTimer > 0,
+            isAirborne: playerY > 0.08,
+            dt: simDt,
+          });
+          stepVx = weatherVel.vx;
+          stepVz = weatherVel.vz;
+
           frameVelocityX = stepVx;
           frameVelocityZ = stepVz;
-          frameStrafeInputX = moveX;
+          frameStrafeInputX = rightInput;
           frameBuoyancyYOffset = worldPhys.buoyancyYOffset;
 
           // Trigger Mela Central Hub Jump-Padding Platform Launch
@@ -7111,15 +7253,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             ? Math.sin(elapsedTotal * 2.1 + playerX * 0.3) * 0.045
             : 0;
 
-          // Update Golden Objective Compass Ring & Soft 'Magnet' Target Acquisition Reticle
+          // Update Golden Objective Compass Ring & Soft 'Magnet' Target Acquisition Reticle along Camera Forward
           compassGroup.position.set(playerX, 0.045, playerZ);
           const magnetCandidates = buildMagnetCandidates();
-          const rawAimX = hasCursorWorld
-            ? cursorWorldX
-            : playerX + Math.sin(playerYaw) * 6.5;
-          const rawAimZ = hasCursorWorld
-            ? cursorWorldZ
-            : playerZ + Math.cos(playerYaw) * 6.5;
+          const aimCamYaw = cameraDirector.getCurrentYaw();
+          const rawAimX = playerX + Math.sin(aimCamYaw) * 14.0;
+          const rawAimZ = playerZ + Math.cos(aimCamYaw) * 14.0;
 
           const isActivelyFiring =
             magnetFirePulseTimer > 0 ||
@@ -7132,7 +7271,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             rawAimZ,
             playerX,
             playerZ,
-            playerYaw,
+            playerYaw: aimCamYaw,
             isFiring: isActivelyFiring,
             candidates: magnetCandidates,
           });
@@ -7334,13 +7473,24 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               continue;
             }
 
+            // Deflect ordnance endpoints smoothly with live procedural wind
+            const windOrdnance = PhysicsInteraction.stepOrdnanceWindDeflection({
+              targetX: ord.targetX,
+              targetZ: ord.targetZ,
+              weather: weatherState,
+              dt: simDt,
+              susceptibility: ord.kind === 'rocket' ? 0.45 : 0.32,
+            });
+            ord.targetX = windOrdnance.targetX;
+            ord.targetZ = windOrdnance.targetZ;
+
             const ox = THREE.MathUtils.lerp(ord.startX, ord.targetX, ord.progress);
             const oz = THREE.MathUtils.lerp(ord.startZ, ord.targetZ, ord.progress);
             if (ord.kind === 'rocket') {
               const oy = 1.25 + Math.sin(ord.progress * Math.PI) * 0.9;
               ord.group.position.set(ox, oy, oz);
               ord.group.lookAt(ord.targetX, 1.1, ord.targetZ);
-              spawnParticleBurst(ox, oy, oz, 0xfbbf24, 2, 2.6);
+              spawnParticleBurst(ox, oy, oz, 0xfbbf24, 2, 2.6, true);
             } else {
               const arcPeak = ord.kind === 'bomb' ? 3.2 : 3.8;
               const oy = 1.2 + Math.sin(ord.progress * Math.PI) * arcPeak;
@@ -7392,10 +7542,25 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               simDt,
               14
             );
-            proj.x = stepped.x;
-            proj.z = stepped.z;
-            proj.vx = stepped.vx;
-            proj.vz = stepped.vz;
+            // Weather-coupled trajectory drag (rain increases drag) & crosswind drift
+            const weatherProj = PhysicsInteraction.stepProjectileTrajectory({
+              x: stepped.x,
+              y: proj.y,
+              z: stepped.z,
+              vx: stepped.vx,
+              vy: 0,
+              vz: stepped.vz,
+              gravity: 1.4,
+              weather: weatherState,
+              dt: simDt,
+              dragCoeff: 0.42,
+              windSusceptibility: 0.78,
+            });
+            proj.x = weatherProj.x;
+            proj.y = Math.max(0.25, weatherProj.y);
+            proj.z = weatherProj.z;
+            proj.vx = weatherProj.vx;
+            proj.vz = weatherProj.vz;
             const ageRatio = Math.max(
               0,
               Math.min(1, 1 - proj.life / Math.max(0.05, proj.maxLife))
@@ -7852,6 +8017,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           velocityX: frameVelocityX,
           velocityZ: frameVelocityZ,
           strafeInputX: frameStrafeInputX,
+          isOrbitDragging: leftDragMoved || rightButtonDown,
           isSprintingOrDashing: isSprintingNow,
           shieldActive: shieldActiveTimer > 0,
           justFiredGulal: false,
@@ -7865,9 +8031,6 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           photoOrbitPitch,
           photoZoomDist,
           photoFov: currentProps.photoFov,
-          orbitYawOffset: gameplayOrbitYaw,
-          orbitPitchOffset: gameplayOrbitPitch,
-          zoomDistanceOffset: gameplayZoomOffset,
         });
 
         replayRecorder.maybeRecordKeyframe({
@@ -7957,20 +8120,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
                 remainingRevelers > 1 ? 's' : ''
               } · Refill Gulal at Courtyard Vats!`;
 
-          // Project 3D Soft-Magnet Reticle to 2D Screen Percentage for HUD Overlay
+          // Project 3D Soft-Magnet Reticle along Camera Forward to 2D Screen Percentage for HUD Overlay
           const activeMagnetCandidates = buildMagnetCandidates();
-          const curAimX = hasCursorWorld
-            ? cursorWorldX
-            : playerX + Math.sin(playerYaw) * 6.5;
-          const curAimZ = hasCursorWorld
-            ? cursorWorldZ
-            : playerZ + Math.cos(playerYaw) * 6.5;
+          const hudCamYaw = cameraDirector.getCurrentYaw();
+          const curAimX = playerX + Math.sin(hudCamYaw) * 14.0;
+          const curAimZ = playerZ + Math.cos(hudCamYaw) * 14.0;
           const curMagnet = computeSoftMagnetReticle({
             rawAimX: curAimX,
             rawAimZ: curAimZ,
             playerX,
             playerZ,
-            playerYaw,
+            playerYaw: hudCamYaw,
             isFiring:
               magnetFirePulseTimer > 0 ||
               pointerIsDown ||
@@ -8050,6 +8210,13 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             adaptiveDifficulty: adaptiveProfile,
             karma: karmaState,
             dayNight: atmosphere,
+            weather: {
+              weatherId: weatherState.weatherId,
+              label: weatherState.label,
+              shortBadge: weatherState.shortBadge,
+              rainIntensity: weatherState.rainIntensity,
+              windSpeed: weatherState.windSpeed,
+            },
             playerX,
             playerY,
             playerZ,
@@ -8148,6 +8315,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       melaRidesRig?.dispose();
       loadedMelaAssets?.dispose();
       proceduralCrowd.dispose();
+      weatherVfx.dispose();
       cobblestonePBRBundle.dispose();
       wetMarbleGulalBundle.dispose();
       carvedSandstonePBRBundle.dispose();

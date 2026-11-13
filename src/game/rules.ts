@@ -3496,6 +3496,259 @@ export function resolveMultiWhiskerCollisionDistance(
   return resolveWhiskerCollisionDistance(desiredDistance, minHit);
 }
 
+export const ORBITAL_CAMERA_DEFAULTS = {
+  distance: 5.4,
+  minDistance: 3.0,
+  maxDistance: 9.5,
+  pivotHeight: 1.65,
+  rightShoulderOffset: 0.55,
+  defaultPitchRad: (12 * Math.PI) / 180,
+  minPitchRad: (-8 * Math.PI) / 180,
+  maxPitchRad: (45 * Math.PI) / 180,
+  idleWalkFov: 45,
+  sprintDashFov: 54,
+  maxCornerRollRad: (1.8 * Math.PI) / 180,
+  fireRecoilMeters: 0.05,
+  fireRecoilSettleSec: 0.12,
+  shieldPullbackMeters: 1.4,
+  rideStallTransitionSec: 0.85,
+  previewHeight: 4.2,
+  previewLookAtY: 7.2,
+  previewFov: 42,
+  previewArcRadius: 26,
+  previewArcSpeedRadPerSec: 0.08,
+  enterWorldSwoopSec: 1.5,
+} as const;
+
+export function dampValue(
+  current: number,
+  target: number,
+  lambda: number,
+  dt: number
+): number {
+  const safeDt = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0.016));
+  const t = 1 - Math.exp(-Math.max(0, lambda) * safeDt);
+  return current + (target - current) * t;
+}
+
+export function normalizeAngleRad(angleRad: number): number {
+  let a = Number.isFinite(angleRad) ? angleRad : 0;
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+export function dampAngleRad(
+  currentRad: number,
+  targetRad: number,
+  lambda: number,
+  dt: number
+): number {
+  const diff = normalizeAngleRad(targetRad - currentRad);
+  const safeDt = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0.016));
+  const t = 1 - Math.exp(-Math.max(0, lambda) * safeDt);
+  return normalizeAngleRad(currentRad + diff * t);
+}
+
+/**
+ * Computes camera-relative XZ movement direction from WASD/stick inputs and camera yaw.
+ * Convention: camForwardXZ = (sin(camYaw), cos(camYaw)), camRightXZ = (-cos(camYaw), sin(camYaw)).
+ * At camYaw = Math.PI (facing North -Z): W (+1) moves (0, -1) into screen; D (+1) moves (+1, 0) right.
+ */
+export function computeCameraRelativeMoveVector(params: {
+  forwardInput: number; // +1 for W, -1 for S
+  rightInput: number; // +1 for D, -1 for A
+  camYawRad: number;
+}): { moveX: number; moveZ: number; magnitude: number } {
+  const fwd = Number.isFinite(params.forwardInput) ? params.forwardInput : 0;
+  const rgt = Number.isFinite(params.rightInput) ? params.rightInput : 0;
+  const yaw = Number.isFinite(params.camYawRad) ? params.camYawRad : Math.PI;
+
+  const fwdX = Math.sin(yaw);
+  const fwdZ = Math.cos(yaw);
+  const rightX = -Math.cos(yaw);
+  const rightZ = Math.sin(yaw);
+
+  let moveX = fwdX * fwd + rightX * rgt;
+  let moveZ = fwdZ * fwd + rightZ * rgt;
+  const mag = Math.hypot(moveX, moveZ);
+  if (mag > 1e-5) {
+    moveX /= mag;
+    moveZ /= mag;
+  } else {
+    moveX = 0;
+    moveZ = 0;
+  }
+
+  return {
+    moveX: Number(moveX.toFixed(5)),
+    moveZ: Number(moveZ.toFixed(5)),
+    magnitude: mag > 1e-5 ? 1 : 0,
+  };
+}
+
+export function computeOrbitalGameplayFov(params: {
+  isSprintingOrDashing: boolean;
+}): number {
+  return params.isSprintingOrDashing
+    ? ORBITAL_CAMERA_DEFAULTS.sprintDashFov
+    : ORBITAL_CAMERA_DEFAULTS.idleWalkFov;
+}
+
+export function computeOrbitalCorneringRoll(params: {
+  strafeInputX: number;
+  yawRateRadPerSec: number;
+  moveSpeed: number;
+}): number {
+  const maxRoll = ORBITAL_CAMERA_DEFAULTS.maxCornerRollRad; // ±1.8° (~0.03142 rad)
+  const speedScale = Math.max(0, Math.min(1, params.moveSpeed / 6.0));
+  const strafeTerm = -params.strafeInputX * maxRoll * 0.7;
+  const turnTerm =
+    Math.max(-1, Math.min(1, params.yawRateRadPerSec / 3.2)) *
+    maxRoll *
+    0.75 *
+    speedScale;
+  const combined = Math.max(-maxRoll, Math.min(maxRoll, strafeTerm + turnTerm));
+  return Number(combined.toFixed(6));
+}
+
+export function computeOrbitalThirdPersonPose(params: {
+  playerX: number;
+  playerY: number;
+  playerZ: number;
+  camYawRad: number;
+  camPitchRad: number;
+  distance: number;
+  shieldBlend?: number;
+  recoilImpulseMeters?: number;
+  fireworkLookUpTimerSec?: number;
+}): {
+  pivotX: number;
+  pivotY: number;
+  pivotZ: number;
+  desiredCamX: number;
+  desiredCamY: number;
+  desiredCamZ: number;
+  desiredLookAtX: number;
+  desiredLookAtY: number;
+  desiredLookAtZ: number;
+  effectiveDistance: number;
+  camForwardX: number;
+  camForwardZ: number;
+} {
+  const clampedPitch = Math.max(
+    ORBITAL_CAMERA_DEFAULTS.minPitchRad,
+    Math.min(ORBITAL_CAMERA_DEFAULTS.maxPitchRad, params.camPitchRad)
+  );
+  const clampedBaseDist = Math.max(
+    ORBITAL_CAMERA_DEFAULTS.minDistance,
+    Math.min(ORBITAL_CAMERA_DEFAULTS.maxDistance, params.distance)
+  );
+  const shieldBlend = Math.max(0, Math.min(1, params.shieldBlend ?? 0));
+  const effectiveDistance =
+    clampedBaseDist + shieldBlend * ORBITAL_CAMERA_DEFAULTS.shieldPullbackMeters;
+
+  const camForwardX = Math.sin(params.camYawRad);
+  const camForwardZ = Math.cos(params.camYawRad);
+  const camRightX = -Math.cos(params.camYawRad);
+  const camRightZ = Math.sin(params.camYawRad);
+
+  const rightOffset = ORBITAL_CAMERA_DEFAULTS.rightShoulderOffset;
+  const pivotX = params.playerX + camRightX * rightOffset;
+  const pivotY = params.playerY + ORBITAL_CAMERA_DEFAULTS.pivotHeight;
+  const pivotZ = params.playerZ + camRightZ * rightOffset;
+
+  const cosPitch = Math.cos(clampedPitch);
+  const sinPitch = Math.sin(clampedPitch);
+  const recoil = Math.max(0, params.recoilImpulseMeters ?? 0);
+
+  const desiredCamX =
+    pivotX - camForwardX * (cosPitch * effectiveDistance + recoil);
+  const desiredCamY = Math.max(0.45, pivotY + sinPitch * effectiveDistance);
+  const desiredCamZ =
+    pivotZ - camForwardZ * (cosPitch * effectiveDistance + recoil);
+
+  let fireworkLiftY = 0;
+  if ((params.fireworkLookUpTimerSec ?? 0) > 0) {
+    const fwNorm = Math.max(
+      0,
+      Math.min(1, (params.fireworkLookUpTimerSec ?? 0) / 1.8)
+    );
+    fireworkLiftY = 5.5 * Math.sin(fwNorm * Math.PI);
+  }
+
+  // Forward horizon look-through with smooth pitch tracking:
+  // At default 12° pitch, raises horizon bias slightly so Temple, courtyard, AND player feet remain framed cleanly.
+  const lookAheadDist = 14.0;
+  const pitchFromDefault = clampedPitch - ORBITAL_CAMERA_DEFAULTS.defaultPitchRad;
+  const lookAtBiasY = 0.55 - Math.sin(pitchFromDefault) * 9.5;
+
+  const desiredLookAtX = pivotX + camForwardX * lookAheadDist;
+  const desiredLookAtY = pivotY + lookAtBiasY + fireworkLiftY;
+  const desiredLookAtZ = pivotZ + camForwardZ * lookAheadDist;
+
+  return {
+    pivotX: Number(pivotX.toFixed(4)),
+    pivotY: Number(pivotY.toFixed(4)),
+    pivotZ: Number(pivotZ.toFixed(4)),
+    desiredCamX: Number(desiredCamX.toFixed(4)),
+    desiredCamY: Number(desiredCamY.toFixed(4)),
+    desiredCamZ: Number(desiredCamZ.toFixed(4)),
+    desiredLookAtX: Number(desiredLookAtX.toFixed(4)),
+    desiredLookAtY: Number(desiredLookAtY.toFixed(4)),
+    desiredLookAtZ: Number(desiredLookAtZ.toFixed(4)),
+    effectiveDistance: Number(effectiveDistance.toFixed(4)),
+    camForwardX: Number(camForwardX.toFixed(5)),
+    camForwardZ: Number(camForwardZ.toFixed(5)),
+  };
+}
+
+/**
+ * Preview Mode Wide-Arc Framing (`isPlaying === false`):
+ * Camera sits at y = 4.2, aims slightly upward at lookAt.y = 7.2, fov = 42,
+ * gliding smoothly along a gentle wide arc (radius = 26, speed = 0.08 rad/s)
+ * across the front courtyard so the full Temple Shikhara, Kalash, and saffron flag
+ * fit comfortably inside the viewport with generous sky margin.
+ */
+export function computePreviewArcPose(params: {
+  elapsedSec: number;
+  activeWorld: FestivalWorldId;
+}): {
+  camX: number;
+  camY: number;
+  camZ: number;
+  lookAtX: number;
+  lookAtY: number;
+  lookAtZ: number;
+  fov: number;
+} {
+  const t = Number.isFinite(params.elapsedSec) ? params.elapsedSec : 0;
+  const radius = ORBITAL_CAMERA_DEFAULTS.previewArcRadius; // 26
+  const speed = ORBITAL_CAMERA_DEFAULTS.previewArcSpeedRadPerSec; // 0.08 rad/s
+  // Smooth front-courtyard arc sweeping gently across [-0.62, +0.26] rad
+  const arcAngle = -0.18 + Math.sin(t * speed) * 0.44;
+
+  const camX = Math.sin(arcAngle) * radius;
+  const camY = ORBITAL_CAMERA_DEFAULTS.previewHeight; // 4.2
+  const camZ = Math.cos(arcAngle) * radius;
+
+  // Bias lookAt slightly left of temple center so architecture frames in the right 65% vista
+  const lookAtX = params.activeWorld === 'mela_central' ? 2.5 : -4.2;
+  const lookAtY = ORBITAL_CAMERA_DEFAULTS.previewLookAtY; // 7.2
+  const lookAtZ = -21.5;
+
+  return {
+    camX: Number(camX.toFixed(4)),
+    camY,
+    camZ: Number(camZ.toFixed(4)),
+    lookAtX,
+    lookAtY,
+    lookAtZ,
+    fov: ORBITAL_CAMERA_DEFAULTS.previewFov, // 42
+  };
+}
+
+
 
 
 

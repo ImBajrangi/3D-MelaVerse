@@ -315,6 +315,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   }}
                 />
               </div>
+              {hud.weather && (
+                <div
+                  data-testid="hud-weather-badge"
+                  className="mt-1 flex items-center justify-between text-[8px] font-mono text-sky-200/85"
+                >
+                  <span className="truncate">{hud.weather.label}</span>
+                  <span className="shrink-0 text-amber-200/85">
+                    {hud.weather.rainIntensity > 0.25
+                      ? `${Math.round(hud.weather.rainIntensity * 100)}% Rain`
+                      : `${hud.weather.windSpeed.toFixed(1)} m/s`}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -536,7 +549,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       </div>
 
-      {/* ─── CENTER INTERACTION CALLOUT / PROXIMITY PROMPT ─── */}
+      {/* ─── CENTER AIMING CROSSHAIR & INTERACTION CALLOUT / PROXIMITY PROMPT ─── */}
+      {!isPhotoMode && !mountedRide && (
+        <div
+          aria-hidden="true"
+          data-testid="center-aim-reticle"
+          className="pointer-events-none fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center justify-center"
+        >
+          <div className="w-4 h-4 rounded-full border border-amber-200/65 shadow-[0_0_6px_rgba(0,0,0,0.6)] flex items-center justify-center">
+            <div className="w-1 h-1 rounded-full bg-amber-300" />
+          </div>
+        </div>
+      )}
       <div className="flex flex-col items-center justify-center pointer-events-none my-auto">
         {hud.floatingCallout && (
           <div

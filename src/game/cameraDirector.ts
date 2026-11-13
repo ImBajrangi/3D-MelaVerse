@@ -1,14 +1,17 @@
 import * as THREE from 'three';
 import {
   MELA_STALLS,
+  ORBITAL_CAMERA_DEFAULTS,
   computeRideCabinCameraPose,
   cubicEaseInOut,
-  stepCriticallyDampedSpring,
+  dampAngleRad,
+  normalizeAngleRad,
   stepHandheldBreathingPhase,
   computeHandheldBreathing,
-  computeTargetGameplayFov,
-  computeCorneringDutchRoll,
-  computeSpringArmDesiredPose,
+  computeOrbitalThirdPersonPose,
+  computeOrbitalGameplayFov,
+  computeOrbitalCorneringRoll,
+  computePreviewArcPose,
   resolveWhiskerCollisionDistance,
   computeStarWhiskerOffsets,
   resolveMultiWhiskerCollisionDistance,
@@ -22,116 +25,6 @@ import type {
 } from '../store/useMelaStore';
 
 export type ScreenShakeStepResult = ReturnType<typeof stepScreenShake>;
-
-interface WorldDroneSplineRig {
-  camCurve: THREE.CatmullRomCurve3;
-  targetCurve: THREE.CatmullRomCurve3;
-  cycleDurationSec: number;
-}
-
-function buildWorldDroneSplines(): Record<FestivalWorldId, WorldDroneSplineRig> {
-  const holiCamCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(0.0, 3.5, 14.5),
-      new THREE.Vector3(0.0, 3.5, -2.5),
-      new THREE.Vector3(-9.5, 2.2, -5.5),
-      new THREE.Vector3(8.5, 2.2, -4.5),
-      new THREE.Vector3(16.5, 14.0, 13.5),
-      new THREE.Vector3(-12.5, 11.5, 15.5),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  const holiTargetCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(0.0, 5.2, -16.0),
-      new THREE.Vector3(0.0, 6.8, -19.0),
-      new THREE.Vector3(0.0, 9.0, -19.0),
-      new THREE.Vector3(-2.0, 9.0, -18.5),
-      new THREE.Vector3(0.0, 5.5, -10.5),
-      new THREE.Vector3(0.0, 4.8, -12.0),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  const diwaliCamCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(-14.0, 3.5, 6.5),
-      new THREE.Vector3(0.0, 3.5, 5.2),
-      new THREE.Vector3(8.5, 2.2, 16.5),
-      new THREE.Vector3(-6.5, 2.2, 18.0),
-      new THREE.Vector3(18.5, 14.0, 24.0),
-      new THREE.Vector3(-16.0, 11.0, 18.5),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  const diwaliTargetCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(0.0, 5.0, -16.0),
-      new THREE.Vector3(0.0, 6.4, -19.0),
-      new THREE.Vector3(0.0, 9.0, -19.0),
-      new THREE.Vector3(2.5, 9.0, -18.5),
-      new THREE.Vector3(0.0, 5.2, -8.0),
-      new THREE.Vector3(0.0, 4.5, -12.0),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  const melaCamCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(21.5, 3.5, 2.5),
-      new THREE.Vector3(11.5, 3.5, -6.5),
-      new THREE.Vector3(-4.5, 2.2, 4.5),
-      new THREE.Vector3(-11.5, 2.2, -3.5),
-      new THREE.Vector3(6.5, 14.0, 14.5),
-      new THREE.Vector3(18.5, 14.0, 16.5),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  const melaTargetCurve = new THREE.CatmullRomCurve3(
-    [
-      new THREE.Vector3(0.0, 4.8, -14.0),
-      new THREE.Vector3(0.0, 6.5, -18.5),
-      new THREE.Vector3(0.0, 9.0, -19.0),
-      new THREE.Vector3(8.0, 9.0, -21.0),
-      new THREE.Vector3(21.0, 11.2, -22.0),
-      new THREE.Vector3(24.0, 11.8, -23.0),
-    ],
-    true,
-    'catmullrom',
-    0.5
-  );
-
-  return {
-    holi_braj: {
-      camCurve: holiCamCurve,
-      targetCurve: holiTargetCurve,
-      cycleDurationSec: 28.0,
-    },
-    diwali_ghat: {
-      camCurve: diwaliCamCurve,
-      targetCurve: diwaliTargetCurve,
-      cycleDurationSec: 28.0,
-    },
-    mela_central: {
-      camCurve: melaCamCurve,
-      targetCurve: melaTargetCurve,
-      cycleDurationSec: 30.0,
-    },
-  };
-}
 
 export interface CameraDirectorStepInput {
   dt: number;
@@ -148,6 +41,7 @@ export interface CameraDirectorStepInput {
   velocityX: number;
   velocityZ: number;
   strafeInputX: number;
+  isOrbitDragging?: boolean;
   isSprintingOrDashing: boolean;
   shieldActive: boolean;
   justFiredGulal: boolean;
@@ -161,56 +55,46 @@ export interface CameraDirectorStepInput {
   photoOrbitPitch?: number;
   photoZoomDist?: number;
   photoFov?: number;
-  orbitYawOffset?: number;
-  orbitPitchOffset?: number;
-  zoomDistanceOffset?: number;
 }
 
 export class MelaCameraDirector {
-  private readonly splines = buildWorldDroneSplines();
   private readonly raycaster = new THREE.Raycaster();
 
-  // Critically damped position, lookAt, FOV & roll states + derivatives (velocities)
-  private readonly currentPos = new THREE.Vector3(14, 3.5, 14);
-  private posVelX = 0;
-  private posVelY = 0;
-  private posVelZ = 0;
+  // Orbital Third-Person Spring-Arm targets & damped states
+  private targetYaw = Math.PI;
+  private currentYaw = Math.PI;
+  private targetPitch: number = ORBITAL_CAMERA_DEFAULTS.defaultPitchRad; // 12 deg
+  private currentPitch: number = ORBITAL_CAMERA_DEFAULTS.defaultPitchRad;
+  private targetDistance: number = ORBITAL_CAMERA_DEFAULTS.distance; // 5.4 units
+  private currentDistance: number = ORBITAL_CAMERA_DEFAULTS.distance;
 
-  private readonly currentLookAt = new THREE.Vector3(0, 6.2, -16);
-  private lookVelX = 0;
-  private lookVelY = 0;
-  private lookVelZ = 0;
-
-  private currentFov = 40;
-  private fovVel = 0;
-
+  // Damped final camera position, lookAt, FOV, roll & wall anti-clip distance
+  private readonly currentPos = new THREE.Vector3(-4.6, 4.2, 25.5);
+  private readonly currentLookAt = new THREE.Vector3(-4.2, 7.2, -21.5);
+  private currentFov: number = ORBITAL_CAMERA_DEFAULTS.previewFov;
   private currentRollRad = 0;
-  private rollVel = 0;
+  private smoothedClipDist: number = ORBITAL_CAMERA_DEFAULTS.distance;
 
-  private smoothedWhiskerDist = 5.2;
-  private whiskerDistVel = 0;
-
-  // Input & continuous state smoothing (prevents micro-stutter on key tap, snap-aim, sprint & shield toggles)
+  // Motion & action smoothing states
   private smoothedVelX = 0;
   private smoothedVelZ = 0;
   private smoothedYawRate = 0;
   private breathPhase = 0;
   private shieldBlend = 0;
-  private shieldOrbitAngle = 0;
 
-  // 2.0-second "One-Take" Dive Transition state (Preview -> Gameplay)
+  // 1.5-second smooth swoop transition (Preview -> Behind-the-Back Third-Person Rig)
   private wasPlaying = false;
   private diveTransitionActive = false;
   private diveTransitionElapsedSec = 0;
-  private readonly diveDurationSec = 2.0;
+  private readonly diveDurationSec = ORBITAL_CAMERA_DEFAULTS.enterWorldSwoopSec; // 1.5s
   private readonly diveStartPos = new THREE.Vector3();
   private readonly diveStartLookAt = new THREE.Vector3();
-  private diveStartFov = 40;
+  private diveStartFov: number = ORBITAL_CAMERA_DEFAULTS.previewFov;
 
-  // 0.8-second S-curve Ride / Stall Camera Transition state
+  // 0.85-second cubic ease-in-out Ride & Stall camera transitions (enter + exit)
   private lastMountedRide: RideId | null = null;
   private rideTransitionProgress = 1.0;
-  private readonly rideTransitionDurationSec = 0.8;
+  private readonly rideOrStallDurationSec = ORBITAL_CAMERA_DEFAULTS.rideStallTransitionSec; // 0.85s
   private readonly rideBlendStartPos = new THREE.Vector3();
   private readonly rideBlendStartLookAt = new THREE.Vector3();
 
@@ -219,8 +103,8 @@ export class MelaCameraDirector {
   private readonly stallBlendStartPos = new THREE.Vector3();
   private readonly stallBlendStartLookAt = new THREE.Vector3();
 
-  // Ability & Action Camera Timers
-  private fireRecoilTimerSec = 0;
+  // Tactile action camera beats
+  private fireRecoilTimerSec = 0; // 120ms recoil settle
   private fireworkLookUpTimerSec = 0;
   private prevPlayerYaw = Math.PI;
   private whiskerFrameCounter = 0;
@@ -233,8 +117,6 @@ export class MelaCameraDirector {
   private readonly _rayHitBuf: THREE.Intersection[] = [];
 
   // Reusable scratch vectors (zero per-frame GC allocation)
-  private readonly _splinePos = new THREE.Vector3();
-  private readonly _splineLook = new THREE.Vector3();
   private readonly _anchorOrigin = new THREE.Vector3();
   private readonly _rayDir = new THREE.Vector3();
   private readonly _desiredPos = new THREE.Vector3();
@@ -244,8 +126,43 @@ export class MelaCameraDirector {
   private readonly _whiskerRay = new THREE.Vector3();
   private readonly _whiskerHitDists: (number | null)[] = [null, null, null, null, null];
 
+  public getCurrentYaw(): number {
+    return this.currentYaw;
+  }
+
+  public getTargetYaw(): number {
+    return this.targetYaw;
+  }
+
+  public orbitByDelta(deltaYawRad: number, deltaPitchRad: number): void {
+    if (Number.isFinite(deltaYawRad)) {
+      this.targetYaw = normalizeAngleRad(this.targetYaw + deltaYawRad);
+    }
+    if (Number.isFinite(deltaPitchRad)) {
+      this.targetPitch = Math.max(
+        ORBITAL_CAMERA_DEFAULTS.minPitchRad,
+        Math.min(ORBITAL_CAMERA_DEFAULTS.maxPitchRad, this.targetPitch + deltaPitchRad)
+      );
+    }
+  }
+
+  public zoomByDelta(deltaDistance: number): void {
+    if (!Number.isFinite(deltaDistance)) return;
+    this.targetDistance = Math.max(
+      ORBITAL_CAMERA_DEFAULTS.minDistance,
+      Math.min(ORBITAL_CAMERA_DEFAULTS.maxDistance, this.targetDistance + deltaDistance)
+    );
+  }
+
+  public resetBehindPlayer(playerYaw: number): void {
+    const yaw = Number.isFinite(playerYaw) ? playerYaw : Math.PI;
+    this.targetYaw = yaw;
+    this.targetPitch = ORBITAL_CAMERA_DEFAULTS.defaultPitchRad;
+    this.targetDistance = ORBITAL_CAMERA_DEFAULTS.distance;
+  }
+
   public triggerFireGulalRecoil(): void {
-    this.fireRecoilTimerSec = 0.08;
+    this.fireRecoilTimerSec = ORBITAL_CAMERA_DEFAULTS.fireRecoilSettleSec; // 0.12s (120ms)
   }
 
   public triggerFireworkSkyLook(): void {
@@ -253,25 +170,22 @@ export class MelaCameraDirector {
   }
 
   /**
-   * Synchronizes internal spring position/lookAt/FOV after external camera overrides
+   * Synchronizes internal damped pose after external camera overrides
    * (such as Replay Playback exit) so resuming gameplay never snaps.
    */
   public syncPose(
     camPos: THREE.Vector3,
     lookAtPos: THREE.Vector3,
-    fov = 45
+    fov: number = ORBITAL_CAMERA_DEFAULTS.idleWalkFov,
+    yawRad?: number
   ): void {
     this.currentPos.copy(camPos);
     this.currentLookAt.copy(lookAtPos);
     this.currentFov = fov;
-    this.posVelX = 0;
-    this.posVelY = 0;
-    this.posVelZ = 0;
-    this.lookVelX = 0;
-    this.lookVelY = 0;
-    this.lookVelZ = 0;
-    this.fovVel = 0;
-    this.rollVel = 0;
+    if (yawRad !== undefined && Number.isFinite(yawRad)) {
+      this.targetYaw = yawRad;
+      this.currentYaw = yawRad;
+    }
     this.diveTransitionActive = false;
   }
 
@@ -313,89 +227,13 @@ export class MelaCameraDirector {
     return this.cachedColliderMeshes;
   }
 
-  private springMovePos(
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    smoothTime: number,
-    dt: number
-  ): void {
-    const sx = stepCriticallyDampedSpring(
-      this.currentPos.x,
-      this.posVelX,
-      targetX,
-      smoothTime,
-      dt
-    );
-    const sy = stepCriticallyDampedSpring(
-      this.currentPos.y,
-      this.posVelY,
-      targetY,
-      smoothTime,
-      dt
-    );
-    const sz = stepCriticallyDampedSpring(
-      this.currentPos.z,
-      this.posVelZ,
-      targetZ,
-      smoothTime,
-      dt
-    );
-    this.currentPos.set(sx.value, sy.value, sz.value);
-    this.posVelX = sx.velocity;
-    this.posVelY = sy.velocity;
-    this.posVelZ = sz.velocity;
-  }
-
-  private springMoveLookAt(
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    smoothTime: number,
-    dt: number
-  ): void {
-    const sx = stepCriticallyDampedSpring(
-      this.currentLookAt.x,
-      this.lookVelX,
-      targetX,
-      smoothTime,
-      dt
-    );
-    const sy = stepCriticallyDampedSpring(
-      this.currentLookAt.y,
-      this.lookVelY,
-      targetY,
-      smoothTime,
-      dt
-    );
-    const sz = stepCriticallyDampedSpring(
-      this.currentLookAt.z,
-      this.lookVelZ,
-      targetZ,
-      smoothTime,
-      dt
-    );
-    this.currentLookAt.set(sx.value, sy.value, sz.value);
-    this.lookVelX = sx.velocity;
-    this.lookVelY = sy.velocity;
-    this.lookVelZ = sz.velocity;
-  }
-
-  private springMoveFov(
+  private applyCameraFov(
     camera: THREE.PerspectiveCamera,
     targetFov: number,
-    smoothTime: number,
+    lambda: number,
     dt: number
   ): void {
-    const sf = stepCriticallyDampedSpring(
-      this.currentFov,
-      this.fovVel,
-      targetFov,
-      smoothTime,
-      dt
-    );
-    this.currentFov = sf.value;
-    this.fovVel = sf.velocity;
+    this.currentFov = THREE.MathUtils.damp(this.currentFov, targetFov, lambda, dt);
     if (Math.abs(camera.fov - this.currentFov) > 0.015) {
       camera.fov = this.currentFov;
       camera.updateProjectionMatrix();
@@ -415,13 +253,20 @@ export class MelaCameraDirector {
     this.fireRecoilTimerSec = Math.max(0, this.fireRecoilTimerSec - dt);
     this.fireworkLookUpTimerSec = Math.max(0, this.fireworkLookUpTimerSec - dt);
 
-    // Detect transition Preview -> Gameplay
+    // Detect Preview -> Gameplay transition (1.5-second smooth swoop)
     if (input.isPlaying && !this.wasPlaying) {
       this.diveTransitionActive = true;
       this.diveTransitionElapsedSec = 0;
       this.diveStartPos.copy(this.currentPos);
       this.diveStartLookAt.copy(this.currentLookAt);
       this.diveStartFov = this.currentFov;
+      this.targetYaw = input.playerYaw;
+      this.currentYaw = input.playerYaw;
+      this.targetPitch = ORBITAL_CAMERA_DEFAULTS.defaultPitchRad;
+      this.currentPitch = ORBITAL_CAMERA_DEFAULTS.defaultPitchRad;
+      this.targetDistance = ORBITAL_CAMERA_DEFAULTS.distance;
+      this.currentDistance = ORBITAL_CAMERA_DEFAULTS.distance;
+      this.smoothedClipDist = ORBITAL_CAMERA_DEFAULTS.distance;
       this.smoothedVelX = 0;
       this.smoothedVelZ = 0;
       this.prevPlayerYaw = input.playerYaw;
@@ -431,7 +276,7 @@ export class MelaCameraDirector {
     }
     this.wasPlaying = input.isPlaying;
 
-    // Detect Gondola Ride transitions
+    // Detect Gondola Ride enter & exit transitions (0.85s cubic ease-in-out)
     if (input.mountedRide !== this.lastMountedRide) {
       this.lastMountedRide = input.mountedRide;
       this.rideTransitionProgress = 0;
@@ -441,11 +286,11 @@ export class MelaCameraDirector {
     if (this.rideTransitionProgress < 1.0) {
       this.rideTransitionProgress = Math.min(
         1.0,
-        this.rideTransitionProgress + dt / this.rideTransitionDurationSec
+        this.rideTransitionProgress + dt / this.rideOrStallDurationSec
       );
     }
 
-    // Detect Stall Modal transitions
+    // Detect Stall Modal enter & exit transitions (0.85s cubic ease-in-out)
     const currentStall = input.activeStallModal ?? null;
     if (currentStall !== this.lastStallModal) {
       this.lastStallModal = currentStall;
@@ -456,62 +301,56 @@ export class MelaCameraDirector {
     if (this.stallTransitionProgress < 1.0) {
       this.stallTransitionProgress = Math.min(
         1.0,
-        this.stallTransitionProgress + dt / this.rideTransitionDurationSec
+        this.stallTransitionProgress + dt / this.rideOrStallDurationSec
       );
     }
 
     // =========================================================================
-    // STATE 1: CINEMATIC DRONE SPLINE DIRECTOR IN PREVIEW MODE (`!isPlaying`)
+    // STATE 1: PREVIEW MODE (`isPlaying === false`)
+    // y = 4.2, lookAt.y = 7.2, fov = 42, wide arc (radius 26, speed 0.08 rad/s)
     // =========================================================================
     if (!input.isPlaying) {
-      const rig = this.splines[input.activeWorld] ?? this.splines.holi_braj;
-      const u = (input.elapsedSec % rig.cycleDurationSec) / rig.cycleDurationSec;
-
-      rig.camCurve.getPointAt(u, this._splinePos);
-      rig.targetCurve.getPointAt(u, this._splineLook);
+      const preview = computePreviewArcPose({
+        elapsedSec: input.elapsedSec,
+        activeWorld: input.activeWorld,
+      });
 
       this.breathPhase = stepHandheldBreathingPhase(this.breathPhase, dt, {
         moveSpeed: 0,
         isSprintingOrDashing: false,
       });
       const breathing = computeHandheldBreathing(input.elapsedSec, {
+        intensityScale: 0.55,
         phaseOverride: this.breathPhase,
       });
-      this._splinePos.y += breathing.verticalOffsetM;
-      this._splinePos.x += breathing.horizontalOffsetM;
+
+      const targetX = preview.camX + breathing.horizontalOffsetM;
+      const targetY = preview.camY + breathing.verticalOffsetM;
+      const targetZ = preview.camZ;
 
       if (!this.initializedPreviewPose) {
         this.initializedPreviewPose = true;
-        this.currentPos.copy(this._splinePos);
-        this.currentLookAt.copy(this._splineLook);
+        this.currentPos.set(targetX, targetY, targetZ);
+        this.currentLookAt.set(preview.lookAtX, preview.lookAtY, preview.lookAtZ);
+        this.currentFov = preview.fov;
+        camera.fov = preview.fov;
+        camera.updateProjectionMatrix();
       } else {
-        this.springMovePos(
-          this._splinePos.x,
-          this._splinePos.y,
-          this._splinePos.z,
-          0.22,
-          dt
-        );
-        this.springMoveLookAt(
-          this._splineLook.x,
-          this._splineLook.y,
-          this._splineLook.z,
-          0.16,
-          dt
-        );
+        this.currentPos.x = THREE.MathUtils.damp(this.currentPos.x, targetX, 6.0, dt);
+        this.currentPos.y = THREE.MathUtils.damp(this.currentPos.y, targetY, 6.0, dt);
+        this.currentPos.z = THREE.MathUtils.damp(this.currentPos.z, targetZ, 6.0, dt);
+        this.currentLookAt.x = THREE.MathUtils.damp(this.currentLookAt.x, preview.lookAtX, 6.0, dt);
+        this.currentLookAt.y = THREE.MathUtils.damp(this.currentLookAt.y, preview.lookAtY, 6.0, dt);
+        this.currentLookAt.z = THREE.MathUtils.damp(this.currentLookAt.z, preview.lookAtZ, 6.0, dt);
       }
 
-      this.springMoveFov(camera, 40.0, 0.18, dt);
-
-      const sRoll = stepCriticallyDampedSpring(
+      this.applyCameraFov(camera, preview.fov, 8.0, dt);
+      this.currentRollRad = THREE.MathUtils.damp(
         this.currentRollRad,
-        this.rollVel,
         breathing.rollRad,
-        0.16,
+        8.0,
         dt
       );
-      this.currentRollRad = sRoll.value;
-      this.rollVel = sRoll.velocity;
 
       camera.up.set(0, 1, 0);
       camera.position.copy(this.currentPos);
@@ -523,7 +362,7 @@ export class MelaCameraDirector {
     }
 
     // =========================================================================
-    // STATE 2: MOUNTED RIDE GONDOLA CAMERA
+    // STATE 2: MOUNTED RIDE GONDOLA CAMERA (0.85s cubic ease-in-out)
     // =========================================================================
     if (input.mountedRide) {
       const cabinPose = computeRideCabinCameraPose(
@@ -534,33 +373,29 @@ export class MelaCameraDirector {
       );
       const sCurve = cubicEaseInOut(this.rideTransitionProgress);
 
-      this._desiredPos.set(cabinPose.camX, cabinPose.camY, cabinPose.camZ);
-      this._desiredLook.set(cabinPose.lookX, cabinPose.lookY, cabinPose.lookZ);
+      this.currentPos.set(
+        THREE.MathUtils.lerp(this.rideBlendStartPos.x, cabinPose.camX, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartPos.y, cabinPose.camY, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartPos.z, cabinPose.camZ, sCurve)
+      );
+      this.currentLookAt.set(
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.x, cabinPose.lookX, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.y, cabinPose.lookY, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.z, cabinPose.lookZ, sCurve)
+      );
 
-      const targetX = THREE.MathUtils.lerp(this.rideBlendStartPos.x, this._desiredPos.x, sCurve);
-      const targetY = THREE.MathUtils.lerp(this.rideBlendStartPos.y, this._desiredPos.y, sCurve);
-      const targetZ = THREE.MathUtils.lerp(this.rideBlendStartPos.z, this._desiredPos.z, sCurve);
-      const lookX = THREE.MathUtils.lerp(this.rideBlendStartLookAt.x, this._desiredLook.x, sCurve);
-      const lookY = THREE.MathUtils.lerp(this.rideBlendStartLookAt.y, this._desiredLook.y, sCurve);
-      const lookZ = THREE.MathUtils.lerp(this.rideBlendStartLookAt.z, this._desiredLook.z, sCurve);
-
-      this.springMovePos(targetX, targetY, targetZ, 0.055, dt);
-      this.springMoveLookAt(lookX, lookY, lookZ, 0.045, dt);
-      this.springMoveFov(camera, 48.0, 0.16, dt);
+      this.applyCameraFov(camera, 48.0, 8.0, dt);
 
       const gondolaPendulumSway =
         cabinPose.swingAngleRad !== 0
           ? cabinPose.swingAngleRad * 0.22
           : Math.sin(input.elapsedSec * 1.65) * 0.018;
-      const sRoll = stepCriticallyDampedSpring(
+      this.currentRollRad = THREE.MathUtils.damp(
         this.currentRollRad,
-        this.rollVel,
         gondolaPendulumSway,
-        0.14,
+        8.0,
         dt
       );
-      this.currentRollRad = sRoll.value;
-      this.rollVel = sRoll.velocity;
 
       camera.up.set(0, 1, 0);
       camera.position.copy(this.currentPos);
@@ -584,14 +419,17 @@ export class MelaCameraDirector {
         input.playerZ +
         Math.cos(input.playerYaw) * 0.25 +
         input.shakeStep.offsetZ * 0.4;
-      const lookX = eyeX + Math.sin(input.playerYaw) * 10;
+      const lookX = eyeX + Math.sin(this.currentYaw) * 10;
       const lookY = eyeY - 0.35 + (this.fireworkLookUpTimerSec > 0 ? 3.5 : 0);
-      const lookZ = eyeZ + Math.cos(input.playerYaw) * 10;
+      const lookZ = eyeZ + Math.cos(this.currentYaw) * 10;
 
-      // Fast critically damped tracking prevents hard snaps entering/leaving 1st person
-      this.springMovePos(eyeX, eyeY, eyeZ, 0.035, dt);
-      this.springMoveLookAt(lookX, lookY, lookZ, 0.035, dt);
-      this.springMoveFov(camera, 52.0, 0.14, dt);
+      this.currentPos.x = THREE.MathUtils.damp(this.currentPos.x, eyeX, 18, dt);
+      this.currentPos.y = THREE.MathUtils.damp(this.currentPos.y, eyeY, 18, dt);
+      this.currentPos.z = THREE.MathUtils.damp(this.currentPos.z, eyeZ, 18, dt);
+      this.currentLookAt.x = THREE.MathUtils.damp(this.currentLookAt.x, lookX, 18, dt);
+      this.currentLookAt.y = THREE.MathUtils.damp(this.currentLookAt.y, lookY, 18, dt);
+      this.currentLookAt.z = THREE.MathUtils.damp(this.currentLookAt.z, lookZ, 18, dt);
+      this.applyCameraFov(camera, 52.0, 10, dt);
 
       camera.up.set(0, 1, 0);
       camera.position.copy(this.currentPos);
@@ -638,9 +476,13 @@ export class MelaCameraDirector {
       const targetCamY = focalY + sinP * zoomDist + photoBreathing.verticalOffsetM;
       const targetCamZ = focalZ + cosY * cosP * zoomDist;
 
-      this.springMovePos(targetCamX, targetCamY, targetCamZ, 0.11, dt);
-      this.springMoveLookAt(focalX, focalY, focalZ, 0.09, dt);
-      this.springMoveFov(camera, input.photoFov ?? 45, 0.14, dt);
+      this.currentPos.x = THREE.MathUtils.damp(this.currentPos.x, targetCamX, 12, dt);
+      this.currentPos.y = THREE.MathUtils.damp(this.currentPos.y, targetCamY, 12, dt);
+      this.currentPos.z = THREE.MathUtils.damp(this.currentPos.z, targetCamZ, 12, dt);
+      this.currentLookAt.x = THREE.MathUtils.damp(this.currentLookAt.x, focalX, 14, dt);
+      this.currentLookAt.y = THREE.MathUtils.damp(this.currentLookAt.y, focalY, 14, dt);
+      this.currentLookAt.z = THREE.MathUtils.damp(this.currentLookAt.z, focalZ, 14, dt);
+      this.applyCameraFov(camera, input.photoFov ?? 45, 10, dt);
 
       camera.up.set(0, 1, 0);
       camera.position.copy(this.currentPos);
@@ -652,30 +494,8 @@ export class MelaCameraDirector {
     }
 
     // =========================================================================
-    // STATE 4: AAA CRITICALLY DAMPED OVER-THE-SHOULDER SPRING-ARM GAMEPLAY CAMERA
+    // STATE 4: STALL MODAL BOOTH CAMERA (0.85s cubic ease-in-out)
     // =========================================================================
-
-    // Smooth velocity & yaw-rate inputs so WASD start/stop and auto-aim never whip the camera
-    const velAlpha = 1 - Math.exp(-10.5 * dt);
-    this.smoothedVelX += (input.velocityX - this.smoothedVelX) * velAlpha;
-    this.smoothedVelZ += (input.velocityZ - this.smoothedVelZ) * velAlpha;
-    const moveSpeed = Math.hypot(this.smoothedVelX, this.smoothedVelZ);
-
-    // Smooth shield blend & continuous shield orbit angle (eliminates shield-toggle teleport!)
-    const targetShieldBlend = input.shieldActive ? 1.0 : 0.0;
-    const shieldAlpha = 1 - Math.exp(-8.5 * dt);
-    this.shieldBlend += (targetShieldBlend - this.shieldBlend) * shieldAlpha;
-    if (this.shieldBlend > 0.01) {
-      this.shieldOrbitAngle += dt * 0.3 * this.shieldBlend;
-    } else if (Math.abs(this.shieldOrbitAngle) > 0.0005) {
-      // Gently unwind shortest arc back to 0 when shield closes
-      let wrapped = this.shieldOrbitAngle % (Math.PI * 2);
-      if (wrapped > Math.PI) wrapped -= Math.PI * 2;
-      if (wrapped < -Math.PI) wrapped += Math.PI * 2;
-      this.shieldOrbitAngle = wrapped * Math.exp(-5.0 * dt);
-    }
-
-    // Stall modal smooth S-curve framing
     if (input.activeStallModal) {
       const stallSpec = MELA_STALLS.find((s) => s.id === input.activeStallModal);
       if (stallSpec) {
@@ -687,9 +507,9 @@ export class MelaCameraDirector {
         const ly = THREE.MathUtils.lerp(this.stallBlendStartLookAt.y, 1.75, sCurve);
         const lz = THREE.MathUtils.lerp(this.stallBlendStartLookAt.z, stallSpec.z - 0.5, sCurve);
 
-        this.springMovePos(sx, sy, sz, 0.06, dt);
-        this.springMoveLookAt(lx, ly, lz, 0.05, dt);
-        this.springMoveFov(camera, 42.0, 0.16, dt);
+        this.currentPos.set(sx, sy, sz);
+        this.currentLookAt.set(lx, ly, lz);
+        this.applyCameraFov(camera, 42.0, 10, dt);
 
         camera.up.set(0, 1, 0);
         camera.position.copy(this.currentPos);
@@ -698,26 +518,61 @@ export class MelaCameraDirector {
       }
     }
 
-    // 4A. Compute Desired Spring-Arm Pose using smoothed velocity & continuous shield state
-    const desiredPose = computeSpringArmDesiredPose({
+    // =========================================================================
+    // STATE 5: TRUE BEHIND-THE-BACK THIRD-PERSON ORBIT & SPRING-ARM RIG
+    // - Pivot height: 1.65, Right-shoulder offset: +0.55, Distance: 5.4 (3.0..9.5)
+    // - Default pitch: 12 deg (-8 deg..+45 deg)
+    // - Keyboard Auto-Follow Assist (lambda = 2.2) when A/D walking without mouse drag
+    // - Exponential Damping (lambda = 10) on currentYaw, currentPitch, currentDistance
+    // =========================================================================
+    this.smoothedVelX = THREE.MathUtils.damp(this.smoothedVelX, input.velocityX, 11, dt);
+    this.smoothedVelZ = THREE.MathUtils.damp(this.smoothedVelZ, input.velocityZ, 11, dt);
+    const moveSpeed = Math.hypot(this.smoothedVelX, this.smoothedVelZ);
+
+    // Keyboard Auto-Follow Assist: when turning/strafing with A/D without dragging the mouse
+    if (!input.isOrbitDragging && Math.abs(input.strafeInputX) > 0.1 && moveSpeed > 0.5) {
+      this.targetYaw = dampAngleRad(this.targetYaw, input.playerYaw, 2.2, dt);
+    }
+
+    // Frame-rate independent exponential damping (lambda = 10)
+    this.currentYaw = dampAngleRad(this.currentYaw, this.targetYaw, 10, dt);
+    this.currentPitch = THREE.MathUtils.damp(this.currentPitch, this.targetPitch, 10, dt);
+    this.currentDistance = THREE.MathUtils.damp(this.currentDistance, this.targetDistance, 10, dt);
+
+    // Smooth Lotus Shield pullback (+1.4 units)
+    this.shieldBlend = THREE.MathUtils.damp(
+      this.shieldBlend,
+      input.shieldActive ? 1.0 : 0.0,
+      9.0,
+      dt
+    );
+
+    // Tactile Gulal recoil kick (0.05m impulse settling smoothly over 120ms)
+    const recoilNorm =
+      this.fireRecoilTimerSec > 0
+        ? this.fireRecoilTimerSec / ORBITAL_CAMERA_DEFAULTS.fireRecoilSettleSec
+        : 0;
+    const recoilImpulseMeters =
+      ORBITAL_CAMERA_DEFAULTS.fireRecoilMeters * recoilNorm;
+
+    const desiredPose = computeOrbitalThirdPersonPose({
       playerX: input.playerX,
       playerY: input.playerY,
       playerZ: input.playerZ,
-      velocityX: this.smoothedVelX,
-      velocityZ: this.smoothedVelZ,
-      activeWorld: input.activeWorld,
-      shieldActive: input.shieldActive,
-      shieldBlendOverride: this.shieldBlend,
-      shieldOrbitAngleOverride: this.shieldOrbitAngle,
-      orbitYawOffset: input.orbitYawOffset,
-      orbitPitchOffset: input.orbitPitchOffset,
-      zoomDistanceOffset: input.zoomDistanceOffset,
+      camYawRad: this.currentYaw,
+      camPitchRad: this.currentPitch,
+      distance: this.currentDistance,
+      shieldBlend: this.shieldBlend,
+      recoilImpulseMeters,
       fireworkLookUpTimerSec: this.fireworkLookUpTimerSec,
-      elapsedSec: input.elapsedSec,
     });
 
-    // 4B. Zero-GC Cached Anti-Clip 5-Ray Star Array Camera Collision Whiskers
-    this._anchorOrigin.set(input.playerX, input.playerY + 1.6, input.playerZ);
+    // Camera Collision Anti-Clip: THREE.Raycaster from shoulder pivot toward desired camera pos
+    this._anchorOrigin.set(
+      desiredPose.pivotX,
+      desiredPose.pivotY,
+      desiredPose.pivotZ
+    );
     this._desiredPos.set(
       desiredPose.desiredCamX,
       desiredPose.desiredCamY,
@@ -735,7 +590,7 @@ export class MelaCameraDirector {
           input.activeWorld,
           input.colliderMeshes
         );
-        const starOffsets = computeStarWhiskerOffsets(input.playerYaw);
+        const starOffsets = computeStarWhiskerOffsets(this.currentYaw);
 
         for (let w = 0; w < starOffsets.length; w++) {
           const off = starOffsets[w];
@@ -782,44 +637,25 @@ export class MelaCameraDirector {
         fullRayLen,
         this.lastCachedHitDist
       );
-      // Asymmetric damping: fast pull-in on wall clip (0.06s), silky ease-out once clear (0.32s)
-      const whiskerSmoothTime =
-        safeDist < this.smoothedWhiskerDist ? 0.06 : 0.32;
-      const sw = stepCriticallyDampedSpring(
-        this.smoothedWhiskerDist,
-        this.whiskerDistVel,
+      this.smoothedClipDist = THREE.MathUtils.damp(
+        this.smoothedClipDist,
         safeDist,
-        whiskerSmoothTime,
+        safeDist < this.smoothedClipDist ? 20 : 10,
         dt
       );
-      this.smoothedWhiskerDist = sw.value;
-      this.whiskerDistVel = sw.velocity;
-
       this._desiredPos
         .copy(this._anchorOrigin)
-        .addScaledVector(this._rayDir, this.smoothedWhiskerDist);
+        .addScaledVector(this._rayDir, this.smoothedClipDist);
     } else {
-      const sw = stepCriticallyDampedSpring(
-        this.smoothedWhiskerDist,
-        this.whiskerDistVel,
+      this.smoothedClipDist = THREE.MathUtils.damp(
+        this.smoothedClipDist,
         fullRayLen,
-        0.24,
+        14,
         dt
       );
-      this.smoothedWhiskerDist = sw.value;
-      this.whiskerDistVel = sw.velocity;
     }
 
-    // Add directional recoil / impact shake offsets
-    const finalTargetCamX = this._desiredPos.x + input.shakeStep.offsetX * 0.55;
-    const finalTargetCamY = this._desiredPos.y + input.shakeStep.offsetY * 0.55;
-    const finalTargetCamZ = this._desiredPos.z + input.shakeStep.offsetZ * 0.55;
-
-    const finalTargetLookX = desiredPose.desiredLookAtX + input.shakeStep.offsetX * 0.6;
-    const finalTargetLookY = desiredPose.desiredLookAtY + input.shakeStep.offsetY * 0.6;
-    const finalTargetLookZ = desiredPose.desiredLookAtZ + input.shakeStep.offsetZ * 0.4;
-
-    // 4C. Continuous Handheld Breathing Phase + Critically Damped Camera Rig
+    // Handheld Perlin-style breathing (0.08m vertical, 0.004 rad roll scaled by speed)
     this.breathPhase = stepHandheldBreathingPhase(this.breathPhase, dt, {
       moveSpeed,
       isSprintingOrDashing: input.isSprintingOrDashing,
@@ -830,12 +666,25 @@ export class MelaCameraDirector {
       phaseOverride: this.breathPhase,
     });
 
-    const targetGameplayFov = computeTargetGameplayFov({
-      moveSpeed,
+    const targetCamX =
+      this._desiredPos.x +
+      gameplayBreathing.horizontalOffsetM * 0.45 +
+      input.shakeStep.offsetX * 0.45;
+    const targetCamY =
+      this._desiredPos.y +
+      gameplayBreathing.verticalOffsetM +
+      input.shakeStep.offsetY * 0.45;
+    const targetCamZ = this._desiredPos.z + input.shakeStep.offsetZ * 0.45;
+
+    const targetLookX = desiredPose.desiredLookAtX + input.shakeStep.offsetX * 0.4;
+    const targetLookY = desiredPose.desiredLookAtY + input.shakeStep.offsetY * 0.4;
+    const targetLookZ = desiredPose.desiredLookAtZ + input.shakeStep.offsetZ * 0.3;
+
+    const targetGameplayFov = computeOrbitalGameplayFov({
       isSprintingOrDashing: input.isSprintingOrDashing,
-      fireRecoilTimerSec: this.fireRecoilTimerSec,
     });
 
+    // Blend smooth 1.5s Enter [World] swoop OR 0.85s ride/stall exit blend
     if (this.diveTransitionActive) {
       this.diveTransitionElapsedSec += dt;
       const rawProgress = Math.min(
@@ -844,94 +693,80 @@ export class MelaCameraDirector {
       );
       const eased = cubicEaseInOut(rawProgress);
 
-      const springSettle =
-        rawProgress > 0.75
-          ? Math.sin(((rawProgress - 0.75) / 0.25) * Math.PI) * -0.1
-          : 0;
-
-      const guideCamX = THREE.MathUtils.lerp(this.diveStartPos.x, finalTargetCamX, eased);
-      const guideCamY =
-        THREE.MathUtils.lerp(this.diveStartPos.y, finalTargetCamY, eased) + springSettle;
-      const guideCamZ = THREE.MathUtils.lerp(this.diveStartPos.z, finalTargetCamZ, eased);
-
-      const guideLookX = THREE.MathUtils.lerp(
-        this.diveStartLookAt.x,
-        finalTargetLookX,
-        eased
+      this.currentPos.set(
+        THREE.MathUtils.lerp(this.diveStartPos.x, targetCamX, eased),
+        THREE.MathUtils.lerp(this.diveStartPos.y, targetCamY, eased),
+        THREE.MathUtils.lerp(this.diveStartPos.z, targetCamZ, eased)
       );
-      const guideLookY = THREE.MathUtils.lerp(
-        this.diveStartLookAt.y,
-        finalTargetLookY,
-        eased
+      this.currentLookAt.set(
+        THREE.MathUtils.lerp(this.diveStartLookAt.x, targetLookX, eased),
+        THREE.MathUtils.lerp(this.diveStartLookAt.y, targetLookY, eased),
+        THREE.MathUtils.lerp(this.diveStartLookAt.z, targetLookZ, eased)
       );
-      const guideLookZ = THREE.MathUtils.lerp(
-        this.diveStartLookAt.z,
-        finalTargetLookZ,
-        eased
-      );
-
-      // Smoothly ramp spring smoothTime toward gameplay values so exit at 2.0s has C¹ velocity continuity
-      const posSmooth = 0.06 + eased * 0.08;
-      const lookSmooth = 0.05 + eased * 0.035;
-      this.springMovePos(
-        guideCamX + gameplayBreathing.horizontalOffsetM * 0.45,
-        guideCamY + gameplayBreathing.verticalOffsetM,
-        guideCamZ,
-        posSmooth,
-        dt
-      );
-      this.springMoveLookAt(guideLookX, guideLookY, guideLookZ, lookSmooth, dt);
-
-      const guideFov = THREE.MathUtils.lerp(this.diveStartFov, targetGameplayFov, eased);
-      this.springMoveFov(camera, guideFov, 0.1, dt);
+      const swoopFov = THREE.MathUtils.lerp(this.diveStartFov, targetGameplayFov, eased);
+      this.applyCameraFov(camera, swoopFov, 20, dt);
 
       if (rawProgress >= 1.0) {
         this.diveTransitionActive = false;
       }
+    } else if (this.rideTransitionProgress < 1.0) {
+      const sCurve = cubicEaseInOut(this.rideTransitionProgress);
+      this.currentPos.set(
+        THREE.MathUtils.lerp(this.rideBlendStartPos.x, targetCamX, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartPos.y, targetCamY, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartPos.z, targetCamZ, sCurve)
+      );
+      this.currentLookAt.set(
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.x, targetLookX, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.y, targetLookY, sCurve),
+        THREE.MathUtils.lerp(this.rideBlendStartLookAt.z, targetLookZ, sCurve)
+      );
+      this.applyCameraFov(camera, targetGameplayFov, 10, dt);
+    } else if (this.stallTransitionProgress < 1.0) {
+      const sCurve = cubicEaseInOut(this.stallTransitionProgress);
+      this.currentPos.set(
+        THREE.MathUtils.lerp(this.stallBlendStartPos.x, targetCamX, sCurve),
+        THREE.MathUtils.lerp(this.stallBlendStartPos.y, targetCamY, sCurve),
+        THREE.MathUtils.lerp(this.stallBlendStartPos.z, targetCamZ, sCurve)
+      );
+      this.currentLookAt.set(
+        THREE.MathUtils.lerp(this.stallBlendStartLookAt.x, targetLookX, sCurve),
+        THREE.MathUtils.lerp(this.stallBlendStartLookAt.y, targetLookY, sCurve),
+        THREE.MathUtils.lerp(this.stallBlendStartLookAt.z, targetLookZ, sCurve)
+      );
+      this.applyCameraFov(camera, targetGameplayFov, 10, dt);
     } else {
-      // Critically damped spring-arm follow (Pos 0.14s smoothTime, LookAt 0.085s smoothTime)
-      this.springMovePos(
-        finalTargetCamX + gameplayBreathing.horizontalOffsetM * 0.45,
-        finalTargetCamY + gameplayBreathing.verticalOffsetM,
-        finalTargetCamZ,
-        0.14,
-        dt
-      );
-      this.springMoveLookAt(
-        finalTargetLookX,
-        finalTargetLookY,
-        finalTargetLookZ,
-        0.085,
-        dt
-      );
-      this.springMoveFov(camera, targetGameplayFov, 0.16, dt);
+      // Responsive, jitter-free positional follow
+      this.currentPos.x = THREE.MathUtils.damp(this.currentPos.x, targetCamX, 18, dt);
+      this.currentPos.y = THREE.MathUtils.damp(this.currentPos.y, targetCamY, 16, dt);
+      this.currentPos.z = THREE.MathUtils.damp(this.currentPos.z, targetCamZ, 18, dt);
+      this.currentLookAt.x = THREE.MathUtils.damp(this.currentLookAt.x, targetLookX, 22, dt);
+      this.currentLookAt.y = THREE.MathUtils.damp(this.currentLookAt.y, targetLookY, 20, dt);
+      this.currentLookAt.z = THREE.MathUtils.damp(this.currentLookAt.z, targetLookZ, 22, dt);
+      this.applyCameraFov(camera, targetGameplayFov, 9, dt);
     }
 
-    // 4E. Smoothed Cornering Dutch Roll (±2.5° / ±0.043 rad)
+    // Subtle ±1.8° cornering roll tilt when turning fast + Perlin breathing roll
     let yawDiff = input.playerYaw - this.prevPlayerYaw;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     this.prevPlayerYaw = input.playerYaw;
     const rawYawRate = Math.max(-6.0, Math.min(6.0, yawDiff / dt));
-    this.smoothedYawRate += (rawYawRate - this.smoothedYawRate) * (1 - Math.exp(-9.0 * dt));
+    this.smoothedYawRate = THREE.MathUtils.damp(this.smoothedYawRate, rawYawRate, 10, dt);
 
-    const targetDutchRoll = computeCorneringDutchRoll({
+    const targetCornerRoll = computeOrbitalCorneringRoll({
       strafeInputX: input.strafeInputX,
       yawRateRadPerSec: this.smoothedYawRate,
       moveSpeed,
     });
-
-    const targetRollWithBreathing =
-      targetDutchRoll + input.shakeStep.rollRad + gameplayBreathing.rollRad;
-    const sRoll = stepCriticallyDampedSpring(
+    const targetTotalRoll =
+      targetCornerRoll + input.shakeStep.rollRad + gameplayBreathing.rollRad;
+    this.currentRollRad = THREE.MathUtils.damp(
       this.currentRollRad,
-      this.rollVel,
-      targetRollWithBreathing,
-      0.13,
+      targetTotalRoll,
+      10,
       dt
     );
-    this.currentRollRad = sRoll.value;
-    this.rollVel = sRoll.velocity;
 
     camera.up.set(0, 1, 0);
     camera.position.copy(this.currentPos);
