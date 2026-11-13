@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   MELA_RIDES,
   createInitialKarmaState,
@@ -23,7 +23,25 @@ import {
   type RideId,
   type MiniGameStallId,
 } from './store/useMelaStore';
-import { MelaverseCanvas, type HudSnapshot } from './game/MelaverseCanvas';
+import {
+  MelaverseCanvas,
+  type HudSnapshot,
+  type ReplayPlaybackControl,
+  type RestoredSessionPose,
+} from './game/MelaverseCanvas';
+import type {
+  ReplayCameraStyle,
+  ReplayRecording,
+} from './game/replaySystem';
+import {
+  RECOVERY_SAVE_INTERVAL_MS,
+  clearRecoverySnapshotFromStorage,
+  createRecoverySnapshot,
+  loadRecoverySnapshotFromStorage,
+  saveRecoverySnapshotToStorage,
+  shouldSaveRecoverySnapshot,
+  type SessionRecoverySnapshot,
+} from './game/sessionRecovery';
 import { LoadingScreen } from './components/LoadingScreen';
 import { TitleScreen } from './components/TitleScreen';
 import { GameHUD } from './components/GameHUD';
@@ -38,6 +56,9 @@ import { CharacterModal } from './components/CharacterModal';
 import { WorldAtlasModal } from './components/WorldAtlasModal';
 import { BlueprintModal } from './components/BlueprintModal';
 import { StatusModal } from './components/StatusModal';
+import { PhotoStudioModal } from './components/PhotoStudioModal';
+import { SessionRecoveryModal } from './components/SessionRecoveryModal';
+import { ReplayOverlay } from './components/ReplayOverlay';
 import { melaverseAudio } from './game/audio';
 
 export function App() {
@@ -85,6 +106,20 @@ export function App() {
   const equippedShieldSkin = useMelaStore((s) => s.equippedShieldSkin);
   const highScore = useMelaStore((s) => s.highScore);
   const updateHighScore = useMelaStore((s) => s.updateHighScore);
+
+  // Cinematic Photo Mode & Minimal HUD Zustand state
+  const isPhotoMode = useMelaStore((s) => s.isPhotoMode);
+  const photoFov = useMelaStore((s) => s.photoFov);
+  const photoAspectRatio = useMelaStore((s) => s.photoAspectRatio);
+  const photoDepthBlur = useMelaStore((s) => s.photoDepthBlur);
+  const photoWatermark = useMelaStore((s) => s.photoWatermark);
+  const isHudHidden = useMelaStore((s) => s.isHudHidden);
+  const setPhotoMode = useMelaStore((s) => s.setPhotoMode);
+  const setPhotoFov = useMelaStore((s) => s.setPhotoFov);
+  const setPhotoAspectRatio = useMelaStore((s) => s.setPhotoAspectRatio);
+  const setPhotoDepthBlur = useMelaStore((s) => s.setPhotoDepthBlur);
+  const setPhotoWatermark = useMelaStore((s) => s.setPhotoWatermark);
+  const toggleHudHidden = useMelaStore((s) => s.toggleHudHidden);
 
   const [assetLoadProgress, setAssetLoadProgress] = useState<AssetLoadProgress>({
     loadedItems: 5,
@@ -158,7 +193,13 @@ export function App() {
     }
   }, [equippedAttireId]);
 
-  // Overlay Modals
+  // Overlay Modals & Session Crash Recovery
+  const [pendingRecovery, setPendingRecovery] =
+    useState<SessionRecoverySnapshot | null>(() =>
+      loadRecoverySnapshotFromStorage()
+    );
+  const [restoredSessionPose, setRestoredSessionPose] =
+    useState<RestoredSessionPose | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [rangoliOpen, setRangoliOpen] = useState<boolean>(false);
   const [rhythmOpen, setRhythmOpen] = useState<boolean>(false);
@@ -166,6 +207,17 @@ export function App() {
   const [worldAtlasOpen, setWorldAtlasOpen] = useState<boolean>(false);
   const [blueprintOpen, setBlueprintOpen] = useState<boolean>(false);
   const [activeNpc, setActiveNpc] = useState<NpcCharacter | null>(null);
+
+  // Instant 30-second Replay Playback State
+  const [latestReplay, setLatestReplay] = useState<ReplayRecording | null>(null);
+  const [isReplaying, setIsReplaying] = useState<boolean>(false);
+  const [replayPlaying, setReplayPlaying] = useState<boolean>(true);
+  const [replaySpeed, setReplaySpeed] = useState<0.5 | 1 | 2>(1);
+  const [replayCameraStyle, setReplayCameraStyle] =
+    useState<ReplayCameraStyle>('cinematic');
+  const [replayTimeSec, setReplayTimeSec] = useState<number>(0);
+  const [replaySeekTimeSec, setReplaySeekTimeSec] = useState<number | null>(null);
+  const [replaySeekToken, setReplaySeekToken] = useState<number>(0);
 
   // Live HUD State Snapshot
   const [hud, setHud] = useState<HudSnapshot>({
@@ -181,7 +233,7 @@ export function App() {
     revelersSplashed: 0,
     targetRevelers: 12,
     diyasLit: 0,
-    targetDiyas: 6,
+    targetDiyas: 8,
     selectedGulal: 'gulabi',
     selectedArsenal: 'pichkari',
     cooldownPct: 0,
@@ -211,6 +263,7 @@ export function App() {
       activeWorld: 'holi_braj',
     }).atmosphere,
     playerX: 0,
+    playerY: 0,
     playerZ: 6.5,
     playerYaw: Math.PI,
     fps: 60,
@@ -223,7 +276,7 @@ export function App() {
     revelersSplashed: 0,
     targetRevelers: 12,
     diyasLit: 0,
-    targetDiyas: 6,
+    targetDiyas: 8,
     clearTimeSec: 0,
   });
 
@@ -241,6 +294,109 @@ export function App() {
     document.body.dataset.state = gameState;
   }, [gameState]);
 
+  // Live mutable context for 30-second persistence interval (avoids resetting timer on HUD ticks)
+  const recoveryContextRef = useRef({
+    gameState,
+    activeWorld,
+    dayNightMode,
+    selectedGulal,
+    selectedArsenal,
+    playerPosition: { x: 0, y: 0, z: 6.5, yaw: Math.PI },
+    score: 0,
+    revelersSplashed: 0,
+    diyasLit: 0,
+    spiritPips: 6,
+  });
+
+  useEffect(() => {
+    recoveryContextRef.current.gameState = gameState;
+    recoveryContextRef.current.activeWorld = activeWorld;
+    recoveryContextRef.current.dayNightMode = dayNightMode;
+    recoveryContextRef.current.selectedGulal = selectedGulal;
+    recoveryContextRef.current.selectedArsenal = selectedArsenal;
+  }, [gameState, activeWorld, dayNightMode, selectedGulal, selectedArsenal]);
+
+  // Persist GameState and player position to localStorage every 30 seconds while active
+  useEffect(() => {
+    if (!shouldSaveRecoverySnapshot(gameState) || pendingRecovery !== null) {
+      return;
+    }
+
+    const persistCheckpoint = () => {
+      const ctx = recoveryContextRef.current;
+      const snapshot = createRecoverySnapshot({
+        gameState: ctx.gameState,
+        activeWorld: ctx.activeWorld,
+        playerPosition: ctx.playerPosition,
+        dayNightMode: ctx.dayNightMode,
+        selectedGulal: ctx.selectedGulal,
+        selectedArsenal: ctx.selectedArsenal,
+        score: ctx.score,
+        revelersSplashed: ctx.revelersSplashed,
+        diyasLit: ctx.diyasLit,
+        spiritPips: ctx.spiritPips,
+      });
+      if (snapshot) {
+        saveRecoverySnapshotToStorage(snapshot);
+      }
+    };
+
+    const intervalId = window.setInterval(
+      persistCheckpoint,
+      RECOVERY_SAVE_INTERVAL_MS
+    );
+    return () => window.clearInterval(intervalId);
+  }, [gameState, pendingRecovery]);
+
+  const handleRestoreSession = useCallback(
+    (snapshot: SessionRecoverySnapshot) => {
+      melaverseAudio.playSacredChime();
+      setActiveWorldState(snapshot.activeWorld);
+      setDayNightMode(snapshot.dayNightMode);
+      setSelectedGulal(snapshot.selectedGulal);
+      setSelectedArsenal(snapshot.selectedArsenal);
+      setOutcome('none');
+      setActiveNpc(null);
+      setSettingsOpen(false);
+      setRangoliOpen(false);
+      setRhythmOpen(false);
+      setCharacterOpen(false);
+      setWorldAtlasOpen(false);
+      setBlueprintOpen(false);
+      setIsReplaying(false);
+      setLatestReplay(null);
+      openStallModal(null);
+      setRestoredSessionPose({
+        token: Date.now() + Math.random(),
+        x: snapshot.playerPosition.x,
+        y: snapshot.playerPosition.y,
+        z: snapshot.playerPosition.z,
+        yaw: snapshot.playerPosition.yaw,
+        score: snapshot.score,
+        revelersSplashed: snapshot.revelersSplashed,
+        diyasLit: snapshot.diyasLit,
+        spiritPips: snapshot.spiritPips,
+      });
+      if (snapshot.gameState === 'paused') {
+        setFinalStats((prev) => ({
+          ...prev,
+          score: snapshot.score,
+          revelersSplashed: snapshot.revelersSplashed,
+          diyasLit: snapshot.diyasLit,
+        }));
+      }
+      setPendingRecovery(null);
+      setGameState(snapshot.gameState);
+    },
+    [openStallModal]
+  );
+
+  const handleDiscardRecovery = useCallback(() => {
+    clearRecoverySnapshotFromStorage();
+    setPendingRecovery(null);
+    setGameState('title');
+  }, []);
+
   const startGameplay = useCallback(() => {
     document.body.dataset.state = 'playing';
     if (document.activeElement instanceof HTMLElement) {
@@ -248,6 +404,8 @@ export function App() {
     }
     setOutcome('none');
     setActiveNpc(null);
+    setIsReplaying(false);
+    setLatestReplay(null);
     setSettingsOpen(false);
     setRangoliOpen(false);
     setRhythmOpen(false);
@@ -259,6 +417,7 @@ export function App() {
   }, [openStallModal]);
 
   const restartRound = useCallback(() => {
+    clearRecoverySnapshotFromStorage();
     exitRide();
     openStallModal(null);
     setResetCounter((c) => c + 1);
@@ -314,6 +473,7 @@ export function App() {
       }
     ) => {
       document.exitPointerLock?.();
+      clearRecoverySnapshotFromStorage();
       exitRide();
       updateHighScore(stats.score);
       setOutcome(roundOutcome);
@@ -323,7 +483,7 @@ export function App() {
         revelersSplashed: stats.revelersSplashed,
         targetRevelers: 12,
         diyasLit: stats.diyasLit,
-        targetDiyas: 6,
+        targetDiyas: 8,
         clearTimeSec: stats.clearTimeSec,
       }));
       setGameState('gameover');
@@ -335,6 +495,8 @@ export function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const anyDrawerOpen =
+        pendingRecovery !== null ||
+        isReplaying ||
         settingsOpen ||
         activeStallModal !== null ||
         rangoliOpen ||
@@ -422,6 +584,8 @@ export function App() {
     worldAtlasOpen,
     blueprintOpen,
     activeNpc,
+    pendingRecovery,
+    isReplaying,
     mountedRide,
     hud,
     startGameplay,
@@ -431,6 +595,9 @@ export function App() {
   ]);
 
   const anySubModalOpen =
+    pendingRecovery !== null ||
+    isReplaying ||
+    isPhotoMode ||
     settingsOpen ||
     activeStallModal !== null ||
     rangoliOpen ||
@@ -443,6 +610,85 @@ export function App() {
   // Pause 3D combat simulation while a studio or mini-game stall modal is open
   const effectiveCanvasGameState: GameState =
     gameState === 'playing' && anySubModalOpen ? 'paused' : gameState;
+
+  const replayPlayback = useMemo<ReplayPlaybackControl>(
+    () => ({
+      active: isReplaying,
+      recording: latestReplay,
+      playing: replayPlaying,
+      speed: replaySpeed,
+      cameraStyle: replayCameraStyle,
+      seekTimeSec: replaySeekTimeSec,
+      seekToken: replaySeekToken,
+    }),
+    [
+      isReplaying,
+      latestReplay,
+      replayPlaying,
+      replaySpeed,
+      replayCameraStyle,
+      replaySeekTimeSec,
+      replaySeekToken,
+    ]
+  );
+
+  const handleReplayRecorded = useCallback((recording: ReplayRecording) => {
+    setLatestReplay(recording);
+  }, []);
+
+  const handleReplayProgress = useCallback(
+    (timeSec: number, _durationSec: number, finished: boolean) => {
+      setReplayTimeSec(timeSec);
+      if (finished) {
+        setReplayPlaying(false);
+      }
+    },
+    []
+  );
+
+  const handleWatchReplay = useCallback(() => {
+    melaverseAudio.playUiClick();
+    setReplayTimeSec(0);
+    setReplaySeekTimeSec(0);
+    setReplaySeekToken((n) => n + 1);
+    setReplayPlaying(true);
+    setIsReplaying(true);
+  }, []);
+
+  const handleToggleReplayPlay = useCallback(() => {
+    if (
+      latestReplay &&
+      !replayPlaying &&
+      replayTimeSec >= latestReplay.durationSec - 0.05
+    ) {
+      setReplayTimeSec(0);
+      setReplaySeekTimeSec(0);
+      setReplaySeekToken((n) => n + 1);
+      setReplayPlaying(true);
+      return;
+    }
+    setReplayPlaying((prev) => !prev);
+  }, [latestReplay, replayPlaying, replayTimeSec]);
+
+  const handleSeekReplay = useCallback((timeSec: number) => {
+    setReplayTimeSec(timeSec);
+    setReplaySeekTimeSec(timeSec);
+    setReplaySeekToken((n) => n + 1);
+  }, []);
+
+  const handleRestartReplay = useCallback(() => {
+    melaverseAudio.playUiClick();
+    setReplayTimeSec(0);
+    setReplaySeekTimeSec(0);
+    setReplaySeekToken((n) => n + 1);
+    setReplayPlaying(true);
+  }, []);
+
+  const handleExitReplay = useCallback(() => {
+    melaverseAudio.playUiClick();
+    setReplayPlaying(false);
+    setIsReplaying(false);
+  }, []);
 
   return (
     <main
@@ -477,6 +723,14 @@ export function App() {
         onChangeDayNightMode={setDayNightMode}
         graphicsPreset={graphicsPreset}
         cameraMode={cameraMode}
+        isPhotoMode={isPhotoMode}
+        photoFov={photoFov}
+        onTogglePhotoMode={() => setPhotoMode(!isPhotoMode)}
+        onToggleHudHidden={toggleHudHidden}
+        restoredSessionPose={restoredSessionPose}
+        replayPlayback={replayPlayback}
+        onReplayRecorded={handleReplayRecorded}
+        onReplayProgress={handleReplayProgress}
         mountedRide={mountedRide}
         activeStallModal={activeStallModal}
         foodBoostMultiplier={activeFoodBoostMultiplier}
@@ -486,6 +740,16 @@ export function App() {
         onSelectGulal={setSelectedGulal}
         onSelectArsenal={setSelectedArsenal}
         onHudUpdate={(snap) => {
+          recoveryContextRef.current.playerPosition = {
+            x: snap.playerX,
+            y: snap.playerY,
+            z: snap.playerZ,
+            yaw: snap.playerYaw,
+          };
+          recoveryContextRef.current.score = snap.score;
+          recoveryContextRef.current.revelersSplashed = snap.revelersSplashed;
+          recoveryContextRef.current.diyasLit = snap.diyasLit;
+          recoveryContextRef.current.spiritPips = snap.spiritPips;
           setHud(snap);
           if (snap.score > highScore) {
             updateHighScore(snap.score);
@@ -533,7 +797,7 @@ export function App() {
       )}
 
       {/* Active Playing HUD (Active Gameplay State: isPlaying === true) */}
-      {gameState !== 'title' && (
+      {gameState !== 'title' && !isReplaying && (
         <GameHUD
           hud={{ ...hud, selectedGulal, selectedArsenal }}
           activeWorld={activeWorld}
@@ -546,6 +810,10 @@ export function App() {
           isMuted={isMuted}
           showFps={showFps}
           cameraMode={cameraMode}
+          isPhotoMode={isPhotoMode}
+          isHudHidden={isHudHidden}
+          onTogglePhotoMode={() => setPhotoMode(!isPhotoMode)}
+          onToggleHudHidden={toggleHudHidden}
           mountedRide={mountedRide}
           hasVipPass={hasVipPass}
           foodBoostMultiplier={activeFoodBoostMultiplier}
@@ -704,15 +972,45 @@ export function App() {
         onClose={() => setBlueprintOpen(false)}
       />
 
+      {/* Cinematic Photo Studio & Postcard Camera Modal */}
+      <PhotoStudioModal
+        isOpen={isPhotoMode}
+        activeWorld={activeWorld}
+        photoFov={photoFov}
+        photoAspectRatio={photoAspectRatio}
+        photoDepthBlur={photoDepthBlur}
+        photoWatermark={photoWatermark}
+        isHudHidden={isHudHidden}
+        onChangeAspectRatio={setPhotoAspectRatio}
+        onChangeFov={setPhotoFov}
+        onChangeDepthBlur={setPhotoDepthBlur}
+        onChangeWatermark={setPhotoWatermark}
+        onToggleHud={toggleHudHidden}
+        onCaptureSnapshot={(watermark, aspect) => {
+          if (typeof window !== 'undefined' && (window as any).__melaverseCapturePhoto) {
+            (window as any).__melaverseCapturePhoto(watermark, aspect);
+          }
+          melaverseAudio.playCoinCollect();
+          handleRewardEarned(15, 25, 'Festival Postcard Photographer Stamp');
+          setKarmaOfferingCount((c) => c + 1);
+        }}
+        onClose={() => setPhotoMode(false)}
+      />
+
       <StatusModal
-        gameState={gameState}
+        gameState={pendingRecovery || isReplaying ? 'title' : gameState}
         outcome={outcome}
         activeNpc={activeNpc}
         finalStats={finalStats}
+        hasReplay={latestReplay !== null && latestReplay.keyframes.length >= 2}
+        onWatchReplay={handleWatchReplay}
         onResume={() => setGameState('playing')}
         onRestart={restartRound}
         onReturnToTitle={() => {
+          clearRecoverySnapshotFromStorage();
           exitRide();
+          setIsReplaying(false);
+          setLatestReplay(null);
           setOutcome('none');
           setGameState('title');
         }}
@@ -721,6 +1019,29 @@ export function App() {
           setKarmaOfferingCount((c) => c + 1);
           setActiveNpc(null);
         }}
+      />
+
+      {/* Instant 30s Cinematic Replay Transport Overlay */}
+      <ReplayOverlay
+        isOpen={isReplaying}
+        recording={latestReplay}
+        currentTimeSec={replayTimeSec}
+        isPlaying={replayPlaying}
+        speed={replaySpeed}
+        cameraStyle={replayCameraStyle}
+        onTogglePlay={handleToggleReplayPlay}
+        onSeek={handleSeekReplay}
+        onChangeSpeed={setReplaySpeed}
+        onChangeCameraStyle={setReplayCameraStyle}
+        onRestartReplay={handleRestartReplay}
+        onExit={handleExitReplay}
+      />
+
+      {/* Crash Protection Session Recovery Prompt */}
+      <SessionRecoveryModal
+        snapshot={pendingRecovery}
+        onRestore={handleRestoreSession}
+        onDiscard={handleDiscardRecovery}
       />
     </main>
   );

@@ -16,6 +16,8 @@ interface StatusModalProps {
     targetDiyas: number;
     clearTimeSec: number;
   };
+  hasReplay?: boolean;
+  onWatchReplay?: () => void;
   onResume: () => void;
   onRestart: () => void;
   onReturnToTitle: () => void;
@@ -27,6 +29,8 @@ export const StatusModal: React.FC<StatusModalProps> = ({
   outcome,
   activeNpc,
   finalStats,
+  hasReplay = false,
+  onWatchReplay,
   onResume,
   onRestart,
   onReturnToTitle,
@@ -234,6 +238,19 @@ export const StatusModal: React.FC<StatusModalProps> = ({
         </div>
 
         <div className="flex flex-col gap-2.5">
+          {hasReplay && onWatchReplay && (
+            <button
+              type="button"
+              data-testid="watch-replay-btn"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onWatchReplay();
+              }}
+              className="touch-target-action w-full py-3 rounded-lg bg-[#F59E0B] hover:bg-[#D97706] text-black font-bold text-sm cursor-pointer transition-colors"
+            >
+              Watch 30s Instant Replay
+            </button>
+          )}
           <button
             type="button"
             data-start="true"

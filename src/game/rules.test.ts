@@ -39,6 +39,8 @@ import {
   computeCorneringDutchRoll,
   computeSpringArmDesiredPose,
   resolveWhiskerCollisionDistance,
+  computeStarWhiskerOffsets,
+  resolveMultiWhiskerCollisionDistance,
   type ChallengerState,
 } from './rules';
 
@@ -765,6 +767,32 @@ test('AAA Camera Director solvers compute cubic ease-in-out, vista framing, dyna
   // 7. Anti-Clip Camera Collision Whisker pulls camera forward by d - 0.35
   assert.equal(resolveWhiskerCollisionDistance(5.2, null), 5.2);
   assert.equal(resolveWhiskerCollisionDistance(5.2, 3.35), 3.0);
+
+  // 8. Dynamic Perlin-Style Camera Breathing (scales amplitude & cadence with movement and sprint)
+  const idleBreath = computeHandheldBreathing(1.0, { moveSpeed: 0, isSprintingOrDashing: false });
+  assert.ok(Math.abs(idleBreath.verticalOffsetM) <= 0.081, 'Idle vertical breathing stays within ±0.08m');
+  assert.ok(Math.abs(idleBreath.rollRad) <= 0.0041, 'Idle roll breathing stays within ±0.004 rad');
+
+  const sprintBreath = computeHandheldBreathing(1.0, { moveSpeed: 9.0, isSprintingOrDashing: true });
+  assert.ok(
+    Math.abs(sprintBreath.verticalOffsetM) > 0,
+    'Sprint breathing produces distinct kinematic displacement'
+  );
+
+  // 9. 5-Ray Star Array Whisker Offsets & Multi-Whisker Resolution
+  const starWhiskers = computeStarWhiskerOffsets(0); // Yaw 0 (facing +Z, right is +X)
+  assert.equal(starWhiskers.length, 5);
+  const whiskerIds = starWhiskers.map((w) => w.id);
+  assert.deepEqual(whiskerIds, ['center', 'left', 'right', 'crown', 'ground']);
+
+  const crownWhisker = starWhiskers.find((w) => w.id === 'crown')!;
+  assert.equal(crownWhisker.anchorOffsetY, 0.4);
+  const groundWhisker = starWhiskers.find((w) => w.id === 'ground')!;
+  assert.equal(groundWhisker.anchorOffsetY, -0.35);
+
+  // Multi-whisker picks the closest obstacle hit and applies safety margin (d - 0.35m)
+  const safeDist = resolveMultiWhiskerCollisionDistance(5.2, [null, 4.2, 2.85, null, 3.8]);
+  assert.equal(safeDist, 2.5); // 2.85 - 0.35 = 2.50m
 });
 
 

@@ -63,6 +63,14 @@ import {
 } from './assetLoader';
 import { MelaPhysicsWorld } from './physicsWorld';
 import {
+  ReplayRecorder,
+  sampleReplayFrame,
+  collectReplayActionsInWindow,
+  computeCinematicReplayCameraPose,
+  type ReplayRecording,
+  type ReplayCameraStyle,
+} from './replaySystem';
+import {
   buildMelaRidesAndStalls,
   type MelaRidesAndStallsRig,
 } from './melaRides';
@@ -125,10 +133,33 @@ export interface HudSnapshot {
   karma: KarmaState;
   dayNight: DayNightAtmosphereProfile;
   playerX: number;
+  playerY: number;
   playerZ: number;
   playerYaw: number;
   fps: number;
   crowdPositions: { x: number; z: number }[];
+}
+
+export interface RestoredSessionPose {
+  token: number;
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  score?: number;
+  revelersSplashed?: number;
+  diyasLit?: number;
+  spiritPips?: number;
+}
+
+export interface ReplayPlaybackControl {
+  active: boolean;
+  recording: ReplayRecording | null;
+  playing: boolean;
+  speed: 0.5 | 1 | 2;
+  cameraStyle: ReplayCameraStyle;
+  seekTimeSec: number | null;
+  seekToken: number;
 }
 
 interface MelaverseCanvasProps {
@@ -180,6 +211,18 @@ interface MelaverseCanvasProps {
     }
   ) => void;
   onTogglePause: () => void;
+  isPhotoMode?: boolean;
+  photoFov?: number;
+  onTogglePhotoMode?: () => void;
+  onToggleHudHidden?: () => void;
+  restoredSessionPose?: RestoredSessionPose | null;
+  replayPlayback?: ReplayPlaybackControl | null;
+  onReplayRecorded?: (recording: ReplayRecording) => void;
+  onReplayProgress?: (
+    timeSec: number,
+    durationSec: number,
+    finished: boolean
+  ) => void;
 }
 
 // Pre-allocated module-scope scratch objects (Zero GC in render loop)
@@ -4525,6 +4568,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         melaverseAudio.playUiClick();
         propsRef.current.onChangeDayNightMode(nextMode);
       }
+      if (code === 'KeyP') {
+        propsRef.current.onTogglePhotoMode?.();
+      }
+      if (code === 'KeyH') {
+        propsRef.current.onToggleHudHidden?.();
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -4549,6 +4598,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let lastRidePointerX = 0;
     let lastRidePointerY = 0;
 
+    let photoOrbitYaw = 0;
+    let photoOrbitPitch = 0.12;
+    let photoZoomDist = 4.2;
+    let lastPhotoPointerX = 0;
+    let lastPhotoPointerY = 0;
+
     const updateCursorWorldFromPointer = (e: PointerEvent, isClick: boolean) => {
       const rect = renderer.domElement.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
@@ -4570,6 +4625,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
     const handleCanvasPointerDown = (e: PointerEvent) => {
       if (propsRef.current.gameState !== 'playing') return;
+      if (propsRef.current.isPhotoMode) {
+        pointerIsDown = true;
+        lastPhotoPointerX = e.clientX;
+        lastPhotoPointerY = e.clientY;
+        return;
+      }
       if (e.button === 0) {
         pointerJustClicked = true;
         pointerIsDown = true;
@@ -4583,6 +4644,22 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
     const handleCanvasPointerMove = (e: PointerEvent) => {
       if (propsRef.current.gameState === 'playing') {
+        if (propsRef.current.isPhotoMode) {
+          if (pointerIsDown) {
+            const dx = e.clientX - lastPhotoPointerX;
+            const dy = e.clientY - lastPhotoPointerY;
+            if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
+              photoOrbitYaw -= dx * 0.0075;
+              photoOrbitPitch = Math.max(
+                -0.55,
+                Math.min(0.85, photoOrbitPitch - dy * 0.006)
+              );
+            }
+            lastPhotoPointerX = e.clientX;
+            lastPhotoPointerY = e.clientY;
+          }
+          return;
+        }
         if (propsRef.current.mountedRide) {
           const dx = e.clientX - lastRidePointerX;
           const dy = e.clientY - lastRidePointerY;
@@ -4611,6 +4688,88 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       }
     };
 
+    const handleCanvasWheel = (e: WheelEvent) => {
+      if (propsRef.current.isPhotoMode) {
+        e.preventDefault();
+        photoZoomDist = Math.max(
+          1.8,
+          Math.min(8.8, photoZoomDist + e.deltaY * 0.004)
+        );
+      }
+    };
+
+    (window as any).__melaverseCapturePhoto = (
+      watermark: boolean,
+      aspect: '16:9' | '1:1' | '2.39:1'
+    ) => {
+      composer.render();
+      const glCanvas = renderer.domElement;
+      const w = glCanvas.width;
+      const h = glCanvas.height;
+
+      const offscreen = document.createElement('canvas');
+      let cropW = w;
+      let cropH = h;
+      let startX = 0;
+      let startY = 0;
+
+      if (aspect === '1:1') {
+        const side = Math.min(w, h);
+        cropW = side;
+        cropH = side;
+        startX = Math.round((w - side) / 2);
+        startY = Math.round((h - side) / 2);
+      } else if (aspect === '2.39:1') {
+        const targetH = Math.round(w / 2.39);
+        if (targetH <= h) {
+          cropW = w;
+          cropH = targetH;
+          startX = 0;
+          startY = Math.round((h - targetH) / 2);
+        } else {
+          cropW = Math.round(h * 2.39);
+          cropH = h;
+          startX = Math.round((w - cropW) / 2);
+          startY = 0;
+        }
+      }
+
+      offscreen.width = cropW;
+      offscreen.height = cropH;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(glCanvas, startX, startY, cropW, cropH, 0, 0, cropW, cropH);
+
+      if (watermark) {
+        ctx.save();
+        ctx.font = 'bold 22px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.95)';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        const sub =
+          propsRef.current.activeWorld === 'holi_braj'
+            ? 'MELAVERSE · HOLI UTSAV BRAJ'
+            : propsRef.current.activeWorld === 'diwali_ghat'
+            ? 'MELAVERSE · DEEPOTSAV SACRED GHAT'
+            : 'MELAVERSE · GRAND MELA HUB';
+        ctx.fillText(sub, 36, cropH - 42);
+        ctx.font = '13px monospace';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.fillText('CELEBRATE TRADITIONS · EXPLORE INDIA', 36, cropH - 22);
+        ctx.restore();
+      }
+
+      melaverseAudio.playSacredChime();
+
+      const link = document.createElement('a');
+      link.download = `melaverse_postcard_${Date.now()}.png`;
+      link.href = offscreen.toDataURL('image/png');
+      link.click();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('pointerup', handleWindowPointerUp);
@@ -4618,6 +4777,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     renderer.domElement.addEventListener('pointerdown', handleCanvasPointerDown);
     renderer.domElement.addEventListener('pointermove', handleCanvasPointerMove);
+    renderer.domElement.addEventListener('wheel', handleCanvasWheel, { passive: false });
     renderer.domElement.addEventListener('contextmenu', handleContextMenu);
 
     let lastObservedW = Math.round(initW);
@@ -4735,6 +4895,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let hitstopTimer = 0;
     let screenShakeState: ScreenShakeState = createInitialScreenShakeState();
     const cameraDirector = new MelaCameraDirector();
+    const replayRecorder = new ReplayRecorder(30);
+    let replayPlaybackTime = 0;
+    let lastReplayActive = false;
+    let lastReplaySeekToken = 0;
+    let replayActionPulse = 0;
+    let lastReplayUiEmitTime = 0;
     let karmaState: KarmaState = createInitialKarmaState();
     const applyKarmaDeed = (action: KarmaActionType, customLabel?: string) => {
       const kRes = recordKarmaAction(karmaState, action, customLabel);
@@ -4758,6 +4924,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       }
     };
     let lastResetCounter = propsRef.current.resetCounter;
+    let lastRestoredPoseToken = 0;
     let lastFireworksCount = propsRef.current.fireworksCount;
     let lastShieldTriggerCount = propsRef.current.shieldTriggerCount;
     let lastFireTriggerCount = propsRef.current.fireTriggerCount;
@@ -4862,6 +5029,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       hitstopTimer = 0;
       screenShakeState = createInitialScreenShakeState();
       karmaState = createInitialKarmaState();
+      replayRecorder.reset();
       clearAllInputs();
 
       // All 6 Diyas start unlit so the player genuinely lights them
@@ -5017,6 +5185,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       emitFloatingCallout('Perfect Diya Rhythm! +30 Coins', '#fde047');
       applyKarmaDeed('light_diya', '+55 Karma · Sacred Diya Lit');
       propsRef.current.onRewardEarned(30, 45, 'Sacred Deepotsav Diya Stamp');
+      if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
+        replayRecorder.recordAction({
+          t: roundElapsedSec,
+          type: 'diya',
+          x: d.x,
+          y: 0.5,
+          z: d.z,
+          yaw: playerYaw,
+        });
+      }
     };
 
     // Activate Sacred Lotus Shield ([Q] or Right-Click): 3.0s duration, 6.0s cooldown, grants speed boost on block
@@ -5035,6 +5213,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         parseInt(skinSpec.rimHex.replace('#', ''), 16) || 0xfde047;
       spawnParticleBurst(playerX, 1.0, playerZ, rimInt, 18, 6.2);
       emitFloatingCallout('Sacred Lotus Shield Active (3.0s)!', '#f472b6');
+      if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
+        replayRecorder.recordAction({
+          t: roundElapsedSec,
+          type: 'shield',
+          x: playerX,
+          y: playerY,
+          z: playerZ,
+          yaw: playerYaw,
+        });
+      }
 
       // Push back & splash any Challenger right next to the player (scaled by Divine Shield Aegis)
       const effectiveRadius = 3.4 * kBoost.shieldRadiusMultiplier;
@@ -5057,6 +5245,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       rhythmRingMesh.visible = true;
       melaverseAudio.playSacredChime();
       spawnParticleBurst(playerX, 1.15, playerZ, 0xfbbf24, 22, 6.8);
+      if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
+        replayRecorder.recordAction({
+          t: roundElapsedSec,
+          type: 'rhythm',
+          x: playerX,
+          y: playerY,
+          z: playerZ,
+          yaw: playerYaw,
+        });
+      }
 
       // Find nearest unlit diya and ignite it on the beat
       let nearestUnlit: DiyaNode | null = null;
@@ -5203,6 +5401,18 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
       playerYaw = magnetRes.aimYaw;
       playerModel.root.rotation.y = playerYaw;
+      if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
+        replayRecorder.recordAction({
+          t: roundElapsedSec,
+          type: 'attack',
+          x: playerX,
+          y: playerY,
+          z: playerZ,
+          yaw: playerYaw,
+          arsenal: activeModeId,
+          gulal: activeGulalId,
+        });
+      }
 
       const targetX = magnetRes.lockedTarget
         ? magnetRes.lockedTarget.x
@@ -5474,6 +5684,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         35,
         'Grand Aakash Deepotsav Fireworks Stamp'
       );
+      if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
+        replayRecorder.recordAction({
+          t: roundElapsedSec,
+          type: 'fireworks',
+          x: playerX,
+          y: playerY,
+          z: playerZ,
+          yaw: playerYaw,
+        });
+      }
     };
 
     let frameId = 0;
@@ -5519,6 +5739,88 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         resetRoundState();
       }
 
+      if (
+        currentProps.restoredSessionPose &&
+        currentProps.restoredSessionPose.token !== lastRestoredPoseToken
+      ) {
+        const pose = currentProps.restoredSessionPose;
+        lastRestoredPoseToken = pose.token;
+        playerX = pose.x;
+        playerY = pose.y;
+        playerZ = pose.z;
+        playerYaw = pose.yaw;
+        playerVy = 0;
+        melaPhysics.teleportPlayer(playerX, playerY, playerZ);
+        playerModel.root.position.set(playerX, playerY, playerZ);
+        playerModel.root.rotation.y = playerYaw;
+        compassGroup.position.set(playerX, 0.045, playerZ);
+        if (typeof pose.score === 'number' && Number.isFinite(pose.score)) {
+          score = Math.max(0, pose.score);
+        }
+        if (
+          typeof pose.revelersSplashed === 'number' &&
+          Number.isFinite(pose.revelersSplashed)
+        ) {
+          revelersSplashed = Math.max(0, pose.revelersSplashed);
+        }
+        if (
+          typeof pose.spiritPips === 'number' &&
+          Number.isFinite(pose.spiritPips)
+        ) {
+          spiritPips = Math.max(1, Math.min(maxSpiritPips, pose.spiritPips));
+          spiritTrail = spiritPips;
+        }
+        if (typeof pose.diyasLit === 'number' && Number.isFinite(pose.diyasLit)) {
+          const targetLit = Math.max(0, Math.min(diyaNodes.length, pose.diyasLit));
+          diyaNodes.forEach((d, idx) => {
+            const shouldBeLit = idx < targetLit;
+            d.lit = shouldBeLit;
+            d.flameMesh.visible = shouldBeLit;
+            d.haloMesh.visible = shouldBeLit;
+            d.unlitRingMesh.visible = !shouldBeLit;
+          });
+        }
+        cameraDirector.step(camera, {
+          dt: 0.05,
+          elapsedSec: elapsedTotal,
+          isPlaying: true,
+          activeWorld: currentProps.activeWorld,
+          cameraMode: currentProps.cameraMode,
+          mountedRide: currentProps.mountedRide,
+          activeStallModal: currentProps.activeStallModal,
+          playerX,
+          playerY,
+          playerZ,
+          playerYaw,
+          velocityX: 0,
+          velocityZ: 0,
+          strafeInputX: 0,
+          isSprintingOrDashing: false,
+          shieldActive: false,
+          justFiredGulal: false,
+          justLaunchedFirework: false,
+          rideLookYawOffset: 0,
+          rideLookPitchOffset: 0,
+          shakeStep: {
+            state: screenShakeState,
+            offsetX: 0,
+            offsetY: 0,
+            offsetZ: 0,
+            rollRad: 0,
+          },
+          colliderMeshes: [
+            mandirGroup,
+            currentProps.activeWorld === 'holi_braj'
+              ? holiWorldGroup
+              : currentProps.activeWorld === 'diwali_ghat'
+              ? diwaliGhatGroup
+              : melaHubGroup,
+          ],
+        });
+        lastHudEmitTime = 0;
+        emitFloatingCallout('Session Restored!', '#10b981');
+      }
+
       if (currentProps.fireworksCount !== lastFireworksCount) {
         lastFireworksCount = currentProps.fireworksCount;
         triggerGrandSkyFireworks();
@@ -5551,6 +5853,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         spawnParticleBurst(playerX, 0.35, playerZ, 0xf43f5e, 18, 6.0);
         emitFloatingCallout('Glowing Rangoli Stamped! +20 Coins', '#f472b6');
         currentProps.onRewardEarned(20, 30, 'Courtyard Rangoli Artist Stamp');
+        if (currentProps.gameState === 'playing' && !currentProps.replayPlayback?.active) {
+          replayRecorder.recordAction({
+            t: roundElapsedSec,
+            type: 'rangoli',
+            x: playerX,
+            y: playerY,
+            z: playerZ,
+            yaw: playerYaw,
+          });
+        }
       }
 
       if (currentProps.karmaOfferingCount !== lastKarmaOfferingCount) {
@@ -6205,13 +6517,177 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             karma: karmaState,
             dayNight: atmosphere,
             playerX,
+            playerY,
             playerZ,
             playerYaw,
             fps: Math.round(smoothedFps),
             crowdPositions: [],
           });
         }
+      } else if (
+        currentProps.replayPlayback?.active &&
+        currentProps.replayPlayback.recording
+      ) {
+        const rp = currentProps.replayPlayback;
+        const rec = currentProps.replayPlayback.recording;
+        if (!rec) {
+          return;
+        }
+        if (!lastReplayActive) {
+          lastReplayActive = true;
+          replayPlaybackTime = 0;
+          replayActionPulse = 0;
+          lastReplayUiEmitTime = 0;
+        }
+        if (rp.seekToken !== lastReplaySeekToken && rp.seekTimeSec !== null) {
+          lastReplaySeekToken = rp.seekToken;
+          replayPlaybackTime = Math.max(
+            0,
+            Math.min(rec.durationSec, rp.seekTimeSec)
+          );
+        }
+
+        const prevReplayTime = replayPlaybackTime;
+        let finishedThisFrame = false;
+        if (rp.playing) {
+          replayPlaybackTime += dt * rp.speed;
+          if (replayPlaybackTime >= rec.durationSec) {
+            replayPlaybackTime = rec.durationSec;
+            finishedThisFrame = true;
+          }
+        }
+
+        const frame = sampleReplayFrame(rec, replayPlaybackTime);
+        playerModel.root.visible = true;
+        playerModel.root.position.set(frame.x, frame.y, frame.z);
+        playerModel.root.rotation.y = frame.yaw;
+        compassGroup.visible = false;
+        lockReticleGroup.visible = false;
+        magnetTetherMesh.visible = false;
+
+        for (const node of challengerNodes) {
+          node.hpBarGroup.visible = false;
+          node.telegraphRing.visible = false;
+          node.telegraphLane.visible = false;
+        }
+
+        const rSwing = frame.speed > 0.25 ? Math.sin(frame.walkPhase) * 0.55 : 0;
+        playerModel.leftLeg.rotation.x = rSwing;
+        playerModel.rightLeg.rotation.x = frame.spinKick ? -1.45 : -rSwing;
+        playerModel.leftArm.rotation.x = -rSwing * 0.7;
+        playerModel.rightArm.rotation.x = frame.armRecoil
+          ? -1.35
+          : -0.5 + rSwing * 0.35;
+        playerModel.dupattaMesh.rotation.x =
+          0.22 +
+          Math.min(1.5, frame.speed / 8.0) * 0.48 +
+          Math.sin(elapsedTotal * 5.2) * 0.06;
+
+        shieldGroup.visible = frame.shieldActive;
+        if (frame.shieldActive) {
+          shieldGroup.position.set(frame.x, frame.y + 1.0, frame.z);
+          shieldGroup.rotation.y = elapsedTotal * 4.2;
+        }
+        if (frame.isDashing && rp.playing) {
+          spawnParticleBurst(
+            frame.x,
+            frame.y + 0.35,
+            frame.z,
+            0xf59e0b,
+            1,
+            2.8
+          );
+        }
+
+        const sliceActions = rp.playing
+          ? collectReplayActionsInWindow(rec, prevReplayTime, replayPlaybackTime)
+          : [];
+        for (const act of sliceActions) {
+          replayActionPulse = 1.0;
+          if (act.type === 'attack') {
+            const gColor =
+              act.gulal === 'haldi'
+                ? 0xfbbf24
+                : act.gulal === 'neel'
+                ? 0x38bdf8
+                : 0xf43f5e;
+            spawnParticleBurst(
+              act.x + Math.sin(act.yaw) * 1.1,
+              act.y + 1.15,
+              act.z + Math.cos(act.yaw) * 1.1,
+              gColor,
+              16,
+              6.2
+            );
+            melaverseAudio.playGulalThrow(act.gulal ?? 'gulabi');
+          } else if (act.type === 'dash' || act.type === 'jump') {
+            spawnParticleBurst(act.x, act.y + 0.4, act.z, 0xf59e0b, 14, 5.8);
+            melaverseAudio.playDashOrJump();
+          } else if (act.type === 'shield') {
+            spawnParticleBurst(act.x, act.y + 1.0, act.z, 0xf472b6, 18, 6.2);
+            melaverseAudio.playShieldParry(false);
+          } else if (act.type === 'fireworks') {
+            const fwColors = [0xfbbf24, 0xf43f5e, 0x38bdf8, 0xa855f7];
+            for (let b = 0; b < 3; b++) {
+              spawnParticleBurst(
+                act.x + (b - 1) * 4.5,
+                8.5 + b * 1.4,
+                act.z - 8,
+                fwColors[b % fwColors.length],
+                22,
+                9.5
+              );
+            }
+            melaverseAudio.playRocketLaunch();
+          } else if (act.type === 'rhythm' || act.type === 'diya') {
+            spawnParticleBurst(act.x, act.y + 1.2, act.z, 0xfbbf24, 22, 6.8);
+            melaverseAudio.playSacredChime();
+          } else if (act.type === 'rangoli') {
+            spawnParticleBurst(act.x, act.y + 0.35, act.z, 0xf43f5e, 18, 6.0);
+            melaverseAudio.playSacredChime();
+          }
+        }
+        replayActionPulse = Math.max(0, replayActionPulse - dt * 2.2);
+
+        const camPose = computeCinematicReplayCameraPose({
+          frame,
+          playbackTimeSec: replayPlaybackTime,
+          cameraStyle: rp.cameraStyle,
+          recentActionPulse: replayActionPulse,
+        });
+        const camDamp = prevReplayTime < 0.05 ? 1 : 1 - Math.exp(-8.5 * dt);
+        camera.position.x = THREE.MathUtils.lerp(
+          camera.position.x,
+          camPose.camX,
+          camDamp
+        );
+        camera.position.y = THREE.MathUtils.lerp(
+          camera.position.y,
+          camPose.camY,
+          camDamp
+        );
+        camera.position.z = THREE.MathUtils.lerp(
+          camera.position.z,
+          camPose.camZ,
+          camDamp
+        );
+        camera.lookAt(camPose.lookAtX, camPose.lookAtY, camPose.lookAtZ);
+        camera.rotateZ(camPose.rollRad);
+        if (Math.abs(camera.fov - camPose.fov) > 0.05) {
+          camera.fov = THREE.MathUtils.lerp(camera.fov, camPose.fov, camDamp);
+          camera.updateProjectionMatrix();
+        }
+
+        if (now - lastReplayUiEmitTime >= 80 || finishedThisFrame) {
+          lastReplayUiEmitTime = now;
+          currentProps.onReplayProgress?.(
+            replayPlaybackTime,
+            rec.durationSec,
+            finishedThisFrame
+          );
+        }
       } else if (currentProps.gameState === 'playing' && !roundEnded) {
+        lastReplayActive = false;
         roundElapsedSec += dt;
 
         // Exit ride if Escape pressed while mounted
@@ -6262,19 +6738,26 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
         // Player-driven attack trigger (Space, J, or Left-Click / Hold)
         if (
-          keysJustPressed.has('Space') ||
-          keysJustPressed.has('KeyJ') ||
-          keysHeld.has('Space') ||
-          keysHeld.has('KeyJ') ||
-          pointerJustClicked ||
-          pointerIsDown
+          !currentProps.isPhotoMode &&
+          (keysJustPressed.has('Space') ||
+            keysJustPressed.has('KeyJ') ||
+            keysHeld.has('Space') ||
+            keysHeld.has('KeyJ') ||
+            pointerJustClicked ||
+            pointerIsDown)
         ) {
           attackBufferTimer = 0.15;
         }
-        if (keysJustPressed.has('ShiftLeft') || keysJustPressed.has('ShiftRight')) {
+        if (
+          !currentProps.isPhotoMode &&
+          (keysJustPressed.has('ShiftLeft') || keysJustPressed.has('ShiftRight'))
+        ) {
           dashBufferTimer = 0.15;
         }
-        if (keysJustPressed.has('KeyQ') || rightClickParryJustPressed) {
+        if (
+          !currentProps.isPhotoMode &&
+          (keysJustPressed.has('KeyQ') || rightClickParryJustPressed)
+        ) {
           activateWaterShield();
         }
 
@@ -6327,12 +6810,14 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             playerYaw += currentProps.mobileLookDeltaYaw;
           }
 
-          let moveX = currentProps.mobileMoveVec.dx;
-          let moveZ = currentProps.mobileMoveVec.dz;
-          if (keysHeld.has('KeyW') || keysHeld.has('ArrowUp')) moveZ -= 1;
-          if (keysHeld.has('KeyS') || keysHeld.has('ArrowDown')) moveZ += 1;
-          if (keysHeld.has('KeyA') || keysHeld.has('ArrowLeft')) moveX -= 1;
-          if (keysHeld.has('KeyD') || keysHeld.has('ArrowRight')) moveX += 1;
+          let moveX = currentProps.isPhotoMode ? 0 : currentProps.mobileMoveVec.dx;
+          let moveZ = currentProps.isPhotoMode ? 0 : currentProps.mobileMoveVec.dz;
+          if (!currentProps.isPhotoMode) {
+            if (keysHeld.has('KeyW') || keysHeld.has('ArrowUp')) moveZ -= 1;
+            if (keysHeld.has('KeyS') || keysHeld.has('ArrowDown')) moveZ += 1;
+            if (keysHeld.has('KeyA') || keysHeld.has('ArrowLeft')) moveX -= 1;
+            if (keysHeld.has('KeyD') || keysHeld.has('ArrowRight')) moveX += 1;
+          }
 
           let moveLen = Math.hypot(moveX, moveZ);
           if (moveLen > 0.01 && !currentProps.mountedRide) {
@@ -6378,6 +6863,14 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             scaleSquashY = 1.2;
             melaverseAudio.playDashOrJump();
             spawnParticleBurst(playerX, 0.45, playerZ, trailHexInt, 14, 5.8);
+            replayRecorder.recordAction({
+              t: roundElapsedSec,
+              type: 'dash',
+              x: playerX,
+              y: playerY,
+              z: playerZ,
+              yaw: playerYaw,
+            });
           }
 
           // Evaluate World-Specific Gravity & Movement Physics Modifiers:
@@ -6447,6 +6940,14 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           if (wantsJump) {
             jumpBufferTimer = 0;
             melaverseAudio.playDashOrJump();
+            replayRecorder.recordAction({
+              t: roundElapsedSec,
+              type: 'jump',
+              x: playerX,
+              y: playerY,
+              z: playerZ,
+              yaw: playerYaw,
+            });
           }
 
           // Apply world-specific gravity modifier to vertical velocity
@@ -7326,6 +7827,26 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           rideLookPitchOffset,
           shakeStep,
           colliderMeshes: [mandirGroup, activeWorldColliderGroup],
+          isPhotoMode: currentProps.isPhotoMode,
+          photoOrbitYaw,
+          photoOrbitPitch,
+          photoZoomDist,
+          photoFov: currentProps.photoFov,
+        });
+
+        replayRecorder.maybeRecordKeyframe({
+          t: roundElapsedSec,
+          x: playerX,
+          y: playerY + frameBuoyancyYOffset,
+          z: playerZ,
+          yaw: playerYaw,
+          vx: frameVelocityX,
+          vz: frameVelocityZ,
+          walkPhase: walkDistAccum,
+          isDashing: dashActiveTimer > 0,
+          shieldActive: shieldActiveTimer > 0,
+          armRecoil: armRecoilTimer > 0,
+          spinKick: spinKickTimer > 0,
         });
 
         const litCount = diyaNodes.filter((d) => d.lit).length;
@@ -7339,6 +7860,29 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
 
         if (outcome !== 'playing' && !roundEnded) {
           roundEnded = true;
+          replayRecorder.maybeRecordKeyframe(
+            {
+              t: roundElapsedSec,
+              x: playerX,
+              y: playerY + frameBuoyancyYOffset,
+              z: playerZ,
+              yaw: playerYaw,
+              vx: frameVelocityX,
+              vz: frameVelocityZ,
+              walkPhase: walkDistAccum,
+              isDashing: dashActiveTimer > 0,
+              shieldActive: shieldActiveTimer > 0,
+              armRecoil: armRecoilTimer > 0,
+              spinKick: spinKickTimer > 0,
+            },
+            true
+          );
+          const finalizedReplay = replayRecorder.finalizeRecording(
+            currentProps.activeWorld
+          );
+          if (finalizedReplay) {
+            currentProps.onReplayRecorded?.(finalizedReplay);
+          }
           if (outcome === 'victory') {
             melaverseAudio.playVictoryFanfare();
           } else {
@@ -7471,6 +8015,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             karma: karmaState,
             dayNight: atmosphere,
             playerX,
+            playerY,
             playerZ,
             playerYaw,
             fps: Math.round(smoothedFps),

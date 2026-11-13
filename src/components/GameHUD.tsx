@@ -28,6 +28,7 @@ import {
   Menu,
   X,
   Grid,
+  Camera,
 } from 'lucide-react';
 import {
   GULAL_WEAPONS,
@@ -87,6 +88,10 @@ export interface GameHUDProps {
   onOpenBlueprint: () => void;
   onPauseGame: () => void;
   onRestartRound: () => void;
+  isPhotoMode?: boolean;
+  isHudHidden?: boolean;
+  onTogglePhotoMode?: () => void;
+  onToggleHudHidden?: () => void;
 }
 
 const WORLD_PILLS: { id: FestivalWorldId; shortLabel: string; color: string }[] = [
@@ -145,6 +150,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onOpenWorldAtlas,
   onOpenBlueprint,
   onPauseGame,
+  isPhotoMode,
+  isHudHidden,
+  onTogglePhotoMode,
+  onToggleHudHidden,
 }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [wheelOpen, setWheelOpen] = useState(false);
@@ -187,6 +196,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  if (isHudHidden) {
+    return (
+      <div className="fixed top-4 right-4 z-40">
+        <button
+          type="button"
+          onClick={onToggleHudHidden}
+          className="px-3 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-xs text-amber-400 hover:text-white flex items-center gap-1.5 transition-colors shadow-xl pointer-events-auto"
+          title="Restore Festival HUD [H]"
+        >
+          <Eye className="w-3.5 h-3.5" />
+          <span>Show HUD [H]</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-2.5 sm:p-3.5 select-none overflow-hidden">
       {/* ─── TOP BAR: 1 COMPACT LEFT PILL (MAX-WIDTH 220PX) + COMPACT RIGHT RADAR ─── */}
@@ -195,32 +220,49 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           {/* Compact Left Pill (max-width: 220px) */}
           <div
             data-testid="hud-top-left-panel"
-            className="pointer-events-auto w-[216px] max-w-[220px] rounded-2xl border border-amber-400/30 bg-[#090612]/80 backdrop-blur-md px-3 py-2 shadow-xl"
+            className="pointer-events-auto w-[220px] max-w-[224px] rounded-2xl border border-amber-400/30 bg-[#090612]/80 backdrop-blur-md px-3 py-2 shadow-xl"
           >
-            {/* Row 1: Current World Title + Menu [Tab] Toggle */}
-            <div className="flex items-center justify-between gap-1.5 mb-1.5">
-              <div className="flex items-center gap-1.5 min-w-0">
+            {/* Row 1: Current World Title + Photo [P] + Menu [Tab] Toggle */}
+            <div className="flex items-center justify-between gap-1 mb-1.5">
+              <div className="flex items-center gap-1 min-w-0">
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: activeWorldMeta.color }}
                 />
                 <h1
                   data-testid="hud-festival-title"
-                  className="font-display text-xs font-bold text-white tracking-tight truncate"
+                  className="font-display text-[11px] font-bold text-white tracking-tight truncate max-w-[85px]"
                 >
                   {activeWorldMeta.shortLabel}
                 </h1>
               </div>
-              <button
-                type="button"
-                data-testid="hud-drawer-toggle-btn"
-                onClick={() => setDrawerOpen((v) => !v)}
-                aria-label="Toggle Festival Drawer (Tab)"
-                className="touch-target-compact px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-amber-400/20 border border-white/15 text-[9px] font-mono font-bold text-amber-200 flex items-center gap-1 shrink-0 transition"
-              >
-                <Menu className="w-2.5 h-2.5" />
-                <span>[Tab]</span>
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  data-testid="hud-photo-mode-btn"
+                  onClick={onTogglePhotoMode}
+                  aria-label="Toggle Cinematic Photo Studio (P)"
+                  className={`touch-target-compact px-1.5 py-0.5 rounded-md border text-[9px] font-mono font-bold flex items-center gap-1 shrink-0 transition ${
+                    isPhotoMode
+                      ? 'bg-amber-400 text-black border-amber-300'
+                      : 'bg-white/10 hover:bg-amber-400/20 border-white/15 text-amber-200'
+                  }`}
+                  title="Cinematic Photo Studio [P]"
+                >
+                  <Camera className="w-2.5 h-2.5" />
+                  <span>[P]</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="hud-drawer-toggle-btn"
+                  onClick={() => setDrawerOpen((v) => !v)}
+                  aria-label="Toggle Festival Drawer (Tab)"
+                  className="touch-target-compact px-1.5 py-0.5 rounded-md bg-white/10 hover:bg-amber-400/20 border border-white/15 text-[9px] font-mono font-bold text-amber-200 flex items-center gap-1 shrink-0 transition"
+                >
+                  <Menu className="w-2.5 h-2.5" />
+                  <span>[Tab]</span>
+                </button>
+              </div>
             </div>
 
             {/* Row 2: Coins & Tickets */}

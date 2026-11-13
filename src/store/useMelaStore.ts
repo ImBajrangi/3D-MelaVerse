@@ -162,8 +162,21 @@ export interface MelaStoreState {
   mountedRide: RideId | null;
   activeStallModal: MiniGameStallId | null;
   mobileControlsVisible: boolean;
+  isPhotoMode: boolean;
+  photoFov: number;
+  photoAspectRatio: '16:9' | '1:1' | '2.39:1';
+  photoDepthBlur: number;
+  photoWatermark: boolean;
+  isHudHidden: boolean;
 
   // Actions
+  setPhotoMode: (active: boolean) => void;
+  setPhotoFov: (fov: number) => void;
+  setPhotoAspectRatio: (ratio: '16:9' | '1:1' | '2.39:1') => void;
+  setPhotoDepthBlur: (blur: number) => void;
+  setPhotoWatermark: (watermark: boolean) => void;
+  toggleHudHidden: () => void;
+  setHudHidden: (hidden: boolean) => void;
   addCoins: (delta: number) => void;
   spendCoins: (amount: number) => boolean;
   addTickets: (delta: number) => void;
@@ -218,6 +231,20 @@ export const useMelaStore = create<MelaStoreState>()(
       mountedRide: null,
       activeStallModal: null,
       mobileControlsVisible: false,
+      isPhotoMode: false,
+      photoFov: 45,
+      photoAspectRatio: '16:9',
+      photoDepthBlur: 0,
+      photoWatermark: true,
+      isHudHidden: false,
+
+      setPhotoMode: (active) => set({ isPhotoMode: active }),
+      setPhotoFov: (fov) => set({ photoFov: fov }),
+      setPhotoAspectRatio: (ratio) => set({ photoAspectRatio: ratio }),
+      setPhotoDepthBlur: (blur) => set({ photoDepthBlur: blur }),
+      setPhotoWatermark: (watermark) => set({ photoWatermark: watermark }),
+      toggleHudHidden: () => set((state) => ({ isHudHidden: !state.isHudHidden })),
+      setHudHidden: (hidden) => set({ isHudHidden: hidden }),
 
       addCoins: (delta) =>
         set((state) => ({

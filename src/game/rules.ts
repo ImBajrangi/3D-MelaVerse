@@ -2684,22 +2684,54 @@ export function cubicEaseInOut(t: number): number {
     : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
 }
 
+export interface HandheldBreathingOptions {
+  moveSpeed?: number;
+  isSprintingOrDashing?: boolean;
+  intensityScale?: number;
+}
+
 /**
- * Dual-frequency handheld camera breathing (±0.08m vertical, ±0.004 rad roll)
- * so preview spline shots feel operated by a real cinematographer.
+ * Dual-frequency Perlin-style handheld camera breathing (±0.08m vertical, ±0.004 rad roll)
+ * with dynamic movement speed and sprint cadence scaling.
  */
-export function computeHandheldBreathing(elapsedSec: number): {
+export function computeHandheldBreathing(
+  elapsedSec: number,
+  options?: HandheldBreathingOptions
+): {
   verticalOffsetM: number;
   horizontalOffsetM: number;
   rollRad: number;
 } {
   const t = Number.isFinite(elapsedSec) ? elapsedSec : 0;
+  const speed = Math.max(0, options?.moveSpeed ?? 0);
+  const isSprint = Boolean(options?.isSprintingOrDashing);
+  const userScale = Math.max(0.1, Math.min(3.0, options?.intensityScale ?? 1.0));
+
+  // Cadence scales naturally with movement: 1.35 rad/s idle -> up to 3.4 rad/s sprint
+  const speedCadence = isSprint ? 2.5 : 1.0 + Math.min(1.2, speed * 0.12);
+  const breathFreq = t * 1.35 * speedCadence;
+  const secondaryFreq = t * 2.45 * speedCadence;
+  const rollFreq = t * 1.15 * speedCadence;
+
+  // Baseline Perlin-style dual harmonic amplitudes:
+  // Primary vertical: 0.052m, Secondary vertical: 0.028m -> Combined amplitude: 0.080m (±0.08m)
+  // Primary roll: 0.0026 rad, Secondary roll: 0.0014 rad -> Combined roll: 0.0040 rad (±0.004 rad)
+  const speedAmpFactor = isSprint ? 1.25 : 1.0 + Math.min(0.4, speed * 0.04);
   const verticalOffsetM =
-    Math.sin(t * 1.35) * 0.052 + Math.cos(t * 2.45 + 0.7) * 0.028;
+    (Math.sin(breathFreq) * 0.052 + Math.cos(secondaryFreq + 0.7) * 0.028) *
+    speedAmpFactor *
+    userScale;
   const horizontalOffsetM =
-    Math.cos(t * 0.95) * 0.035 + Math.sin(t * 1.85 + 1.2) * 0.018;
+    (Math.cos(t * 0.95 * speedCadence) * 0.035 +
+      Math.sin(t * 1.85 * speedCadence + 1.2) * 0.018) *
+    speedAmpFactor *
+    userScale;
   const rollRad =
-    Math.sin(t * 1.15 + 0.4) * 0.0026 + Math.cos(t * 2.1) * 0.0014;
+    (Math.sin(rollFreq + 0.4) * 0.0026 +
+      Math.cos(t * 2.1 * speedCadence) * 0.0014) *
+    speedAmpFactor *
+    userScale;
+
   return {
     verticalOffsetM: Number(verticalOffsetM.toFixed(5)),
     horizontalOffsetM: Number(horizontalOffsetM.toFixed(5)),
@@ -2905,6 +2937,99 @@ export function resolveWhiskerCollisionDistance(
   }
   return desiredDistance;
 }
+
+export interface StarWhiskerOffset {
+  id: 'center' | 'left' | 'right' | 'crown' | 'ground';
+  anchorOffsetX: number;
+  anchorOffsetY: number;
+  anchorOffsetZ: number;
+  camOffsetX: number;
+  camOffsetY: number;
+  camOffsetZ: number;
+}
+
+/**
+ * 5-Ray Star Array Whisker Offset Solver:
+ * Generates anchor origin and camera frustum clearance offsets for:
+ * 1. Center Ray
+ * 2. Left Shoulder Whisker (-0.55m)
+ * 3. Right Shoulder Whisker (+0.55m)
+ * 4. Crown/Eaves Whisker (+0.40m)
+ * 5. Ground/Step Clearance Whisker (-0.35m)
+ */
+export function computeStarWhiskerOffsets(playerYaw: number): StarWhiskerOffset[] {
+  const yaw = Number.isFinite(playerYaw) ? playerYaw : 0;
+  const rightX = Math.cos(yaw);
+  const rightZ = -Math.sin(yaw);
+
+  return [
+    {
+      id: 'center',
+      anchorOffsetX: 0,
+      anchorOffsetY: 0,
+      anchorOffsetZ: 0,
+      camOffsetX: 0,
+      camOffsetY: 0,
+      camOffsetZ: 0,
+    },
+    {
+      id: 'left',
+      anchorOffsetX: -rightX * 0.55,
+      anchorOffsetY: 0,
+      anchorOffsetZ: -rightZ * 0.55,
+      camOffsetX: -rightX * 0.35,
+      camOffsetY: 0,
+      camOffsetZ: -rightZ * 0.35,
+    },
+    {
+      id: 'right',
+      anchorOffsetX: rightX * 0.55,
+      anchorOffsetY: 0,
+      anchorOffsetZ: rightZ * 0.55,
+      camOffsetX: rightX * 0.35,
+      camOffsetY: 0,
+      camOffsetZ: rightZ * 0.35,
+    },
+    {
+      id: 'crown',
+      anchorOffsetX: 0,
+      anchorOffsetY: 0.4,
+      anchorOffsetZ: 0,
+      camOffsetX: 0,
+      camOffsetY: 0.25,
+      camOffsetZ: 0,
+    },
+    {
+      id: 'ground',
+      anchorOffsetX: 0,
+      anchorOffsetY: -0.35,
+      anchorOffsetZ: 0,
+      camOffsetX: 0,
+      camOffsetY: -0.2,
+      camOffsetZ: 0,
+    },
+  ];
+}
+
+/**
+ * Resolves safe camera distance across all 5 star-array whiskers.
+ * Finds the minimum valid obstacle distance and applies safety margin (d - 0.35m, clamped >= 1.1m).
+ */
+export function resolveMultiWhiskerCollisionDistance(
+  desiredDistance: number,
+  hitDistances: (number | null | undefined)[]
+): number {
+  let minHit: number | null = null;
+  for (const dist of hitDistances) {
+    if (dist !== null && dist !== undefined && Number.isFinite(dist) && dist > 0) {
+      if (minHit === null || dist < minHit) {
+        minHit = dist;
+      }
+    }
+  }
+  return resolveWhiskerCollisionDistance(desiredDistance, minHit);
+}
+
 
 
 

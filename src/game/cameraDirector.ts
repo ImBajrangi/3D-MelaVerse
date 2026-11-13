@@ -8,6 +8,8 @@ import {
   computeCorneringDutchRoll,
   computeSpringArmDesiredPose,
   resolveWhiskerCollisionDistance,
+  computeStarWhiskerOffsets,
+  resolveMultiWhiskerCollisionDistance,
   stepScreenShake,
   type FestivalWorldId,
 } from './rules';
@@ -182,6 +184,11 @@ export interface CameraDirectorStepInput {
   rideLookPitchOffset: number;
   shakeStep: ScreenShakeStepResult;
   colliderMeshes: THREE.Object3D[];
+  isPhotoMode?: boolean;
+  photoOrbitYaw?: number;
+  photoOrbitPitch?: number;
+  photoZoomDist?: number;
+  photoFov?: number;
 }
 
 export class MelaCameraDirector {
@@ -439,6 +446,97 @@ export class MelaCameraDirector {
     }
 
     // =========================================================================
+    // STATE 3.5: CINEMATIC PHOTO MODE (Smooth Orbit / Dolly & Focal Depth)
+    // =========================================================================
+    if (input.isPhotoMode) {
+      const orbitYaw = input.photoOrbitYaw ?? 0;
+      const orbitPitch = Math.max(
+        -0.6,
+        Math.min(0.85, input.photoOrbitPitch ?? 0.15)
+      );
+      const zoomDist = Math.max(
+        1.8,
+        Math.min(9.0, input.photoZoomDist ?? 3.8)
+      );
+
+      const focalX = input.playerX;
+      const focalY = input.playerY + 1.45;
+      const focalZ = input.playerZ;
+
+      const cosP = Math.cos(orbitPitch);
+      const sinP = Math.sin(orbitPitch);
+      const sinY = Math.sin(orbitYaw);
+      const cosY = Math.cos(orbitYaw);
+
+      const targetCamX = focalX + sinY * cosP * zoomDist;
+      const targetCamY = focalY + sinP * zoomDist;
+      const targetCamZ = focalZ + cosY * cosP * zoomDist;
+
+      // Soft photo handheld breathing
+      const photoBreathing = computeHandheldBreathing(input.elapsedSec, {
+        intensityScale: 0.45,
+      });
+
+      this.currentPos.x = THREE.MathUtils.damp(
+        this.currentPos.x,
+        targetCamX + photoBreathing.horizontalOffsetM,
+        9.0,
+        dt
+      );
+      this.currentPos.y = THREE.MathUtils.damp(
+        this.currentPos.y,
+        targetCamY + photoBreathing.verticalOffsetM,
+        9.0,
+        dt
+      );
+      this.currentPos.z = THREE.MathUtils.damp(
+        this.currentPos.z,
+        targetCamZ,
+        9.0,
+        dt
+      );
+
+      this.currentLookAt.x = THREE.MathUtils.damp(
+        this.currentLookAt.x,
+        focalX,
+        12.0,
+        dt
+      );
+      this.currentLookAt.y = THREE.MathUtils.damp(
+        this.currentLookAt.y,
+        focalY,
+        12.0,
+        dt
+      );
+      this.currentLookAt.z = THREE.MathUtils.damp(
+        this.currentLookAt.z,
+        focalZ,
+        12.0,
+        dt
+      );
+
+      const targetFov = input.photoFov ?? 45;
+      this.currentFov = THREE.MathUtils.damp(
+        this.currentFov,
+        targetFov,
+        10.0,
+        dt
+      );
+      if (Math.abs(camera.fov - this.currentFov) > 0.02) {
+        camera.fov = this.currentFov;
+        camera.updateProjectionMatrix();
+      }
+
+      camera.up.set(0, 1, 0);
+      camera.position.copy(this.currentPos);
+      camera.lookAt(this.currentLookAt);
+      if (Math.abs(photoBreathing.rollRad) > 0.0001) {
+        camera.rotateZ(photoBreathing.rollRad);
+      }
+      return;
+    }
+
+    // =========================================================================
     // STATE 4: AAA OVER-THE-SHOULDER SPRING-ARM GAMEPLAY CAMERA
     // =========================================================================
     const moveSpeed = Math.hypot(input.velocityX, input.velocityZ);
@@ -481,7 +579,8 @@ export class MelaCameraDirector {
       }
     }
 
-    // 4B. Anti-Clip Camera Collision Whiskers (THREE.Raycaster from playerPos + (0, 1.6, 0) toward desired camera pos)
+    // 4B. Anti-Clip 5-Ray Star Array Camera Collision Whiskers
+    // Evaluates Center Ray, Left Shoulder (-0.55m), Right Shoulder (+0.55m), Crown (+0.40m), and Ground (-0.35m)
     this._anchorOrigin.set(input.playerX, input.playerY + 1.6, input.playerZ);
     this._desiredPos.set(
       desiredPose.desiredCamX,
@@ -497,9 +596,6 @@ export class MelaCameraDirector {
       this.whiskerFrameCounter = (this.whiskerFrameCounter + 1) % 3;
       if (this.whiskerFrameCounter === 0) {
         this.raycaster.camera = camera;
-        this.raycaster.set(this._anchorOrigin, this._rayDir);
-        this.raycaster.near = 0.4;
-        this.raycaster.far = fullRayLen;
 
         // Collect only visible solid THREE.Mesh objects (strictly excluding THREE.Sprite and THREE.Points)
         const solidMeshes: THREE.Object3D[] = [];
@@ -519,10 +615,60 @@ export class MelaCameraDirector {
           });
         }
 
-        const hits = this.raycaster.intersectObjects(solidMeshes, false);
-        const solidArchHit = hits.find((h) => h.point.y > 0.45);
-        this.lastCachedHitDist = solidArchHit ? solidArchHit.distance : null;
+        const starOffsets = computeStarWhiskerOffsets(input.playerYaw);
+        const whiskerHitDistances: (number | null)[] = [];
+
+        for (let w = 0; w < starOffsets.length; w++) {
+          const off = starOffsets[w];
+          const origin = this._anchorOrigin
+            .clone()
+            .add(
+              new THREE.Vector3(
+                off.anchorOffsetX,
+                off.anchorOffsetY,
+                off.anchorOffsetZ
+              )
+            );
+          const target = this._desiredPos
+            .clone()
+            .add(
+              new THREE.Vector3(
+                off.camOffsetX,
+                off.camOffsetY,
+                off.camOffsetZ
+              )
+            );
+          const whiskerRay = target.clone().sub(origin);
+          const wLen = whiskerRay.length();
+          if (wLen > 0.1) {
+            whiskerRay.divideScalar(wLen);
+            this.raycaster.set(origin, whiskerRay);
+            this.raycaster.near = 0.4;
+            this.raycaster.far = wLen;
+            const hits = this.raycaster.intersectObjects(solidMeshes, false);
+            const solidArchHit = hits.find((h) => h.point.y > 0.45);
+            whiskerHitDistances.push(
+              solidArchHit ? solidArchHit.distance : null
+            );
+          } else {
+            whiskerHitDistances.push(null);
+          }
+        }
+
+        this.lastCachedHitDist = resolveMultiWhiskerCollisionDistance(
+          fullRayLen,
+          whiskerHitDistances
+        );
       }
+
+      this._anchorOrigin.set(input.playerX, input.playerY + 1.6, input.playerZ);
+      this._desiredPos.set(
+        desiredPose.desiredCamX,
+        desiredPose.desiredCamY,
+        desiredPose.desiredCamZ
+      );
+      this._rayDir.subVectors(this._desiredPos, this._anchorOrigin).normalize();
+
       const safeDist = resolveWhiskerCollisionDistance(
         fullRayLen,
         this.lastCachedHitDist
@@ -685,15 +831,27 @@ export class MelaCameraDirector {
       yawRateRadPerSec: yawRate,
       moveSpeed,
     });
+
+    // 4F. Dynamic Handheld Camera Breathing (oscillates ±0.08m vertically and ±0.004 rad roll, scaling with speed/sprint)
+    const gameplayBreathing = computeHandheldBreathing(input.elapsedSec, {
+      moveSpeed,
+      isSprintingOrDashing: input.isSprintingOrDashing,
+    });
+
+    const targetRollWithBreathing =
+      targetDutchRoll + input.shakeStep.rollRad + gameplayBreathing.rollRad;
+
     this.currentRollRad = THREE.MathUtils.damp(
       this.currentRollRad,
-      targetDutchRoll + input.shakeStep.rollRad,
+      targetRollWithBreathing,
       10.0,
       dt
     );
 
     camera.up.set(0, 1, 0);
     camera.position.copy(this.currentPos);
+    camera.position.y += gameplayBreathing.verticalOffsetM;
+    camera.position.x += gameplayBreathing.horizontalOffsetM * 0.45;
     camera.lookAt(this.currentLookAt);
     if (Math.abs(this.currentRollRad) > 0.0001) {
       camera.rotateZ(this.currentRollRad);
