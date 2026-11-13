@@ -21,7 +21,6 @@ import {
   stepKarmaState,
   MELA_RIDES,
   MELA_STALLS,
-  stepCrowdVisitorAI,
   DIVINE_BLESSINGS,
   GULAL_WEAPONS,
   ARSENAL_MODES,
@@ -42,7 +41,6 @@ import {
   type ScreenShakeState,
   type KarmaState,
   type KarmaActionType,
-  type CrowdVisitorState,
   type DayNightCycleState,
   type DayNightAtmosphereProfile,
   type DayNightCycleMode,
@@ -76,6 +74,7 @@ import {
 } from './melaRides';
 import { createPBRMaterial } from './pbrMaterials';
 import { MelaCameraDirector } from './cameraDirector';
+import { ProceduralCrowdSystem } from './proceduralCrowd';
 import {
   GRAPHICS_PRESETS,
   type GraphicsQualityPreset,
@@ -1503,65 +1502,8 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       melaHubGroup.add(melaRidesRig.rootGroup);
     });
 
-    // 3D. Autonomous AI Crowd Visitors State (Radar positions; primitive capsule meshes strictly hidden)
-    const MAX_CROWD_VISITORS = 36;
-    const crowdVisitors: CrowdVisitorState[] = [];
-    const crowdBodyGeo = new THREE.CapsuleGeometry(0.24, 0.62, 6, 10);
-    const crowdBodyMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.65,
-      metalness: 0.08,
-    });
-    const crowdHeadGeo = new THREE.SphereGeometry(0.19, 10, 10);
-    const crowdHeadMat = new THREE.MeshStandardMaterial({
-      color: 0xe0ac69,
-      roughness: 0.55,
-      metalness: 0.05,
-    });
-    const crowdJoyGaugeGeo = new THREE.BoxGeometry(0.56, 0.08, 0.08);
-    const crowdJoyGaugeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-    const crowdBodyInstanced = new THREE.InstancedMesh(
-      crowdBodyGeo,
-      crowdBodyMat,
-      MAX_CROWD_VISITORS
-    );
-    const crowdHeadInstanced = new THREE.InstancedMesh(
-      crowdHeadGeo,
-      crowdHeadMat,
-      MAX_CROWD_VISITORS
-    );
-    const crowdJoyInstanced = new THREE.InstancedMesh(
-      crowdJoyGaugeGeo,
-      crowdJoyGaugeMat,
-      MAX_CROWD_VISITORS
-    );
-    crowdBodyInstanced.visible = false;
-    crowdHeadInstanced.visible = false;
-    crowdJoyInstanced.visible = false;
-
-    const visitorPalette = [
-      0xf43f5e, 0xf59e0b, 0x38bdf8, 0xa855f7, 0x10b981, 0xfb923c,
-    ];
-    for (let i = 0; i < MAX_CROWD_VISITORS; i++) {
-      const angle = (i / MAX_CROWD_VISITORS) * Math.PI * 2;
-      const r = 13.5 + (i % 5) * 3.1;
-      const vx = Math.cos(angle) * r;
-      const vz = Math.sin(angle) * r;
-      const nextAngle = angle + 0.6;
-      crowdVisitors.push({
-        id: i + 1,
-        x: vx,
-        z: vz,
-        vx: 0,
-        vz: 0,
-        targetX: Math.cos(nextAngle) * r,
-        targetZ: Math.sin(nextAngle) * r,
-        speed: 1.65 + (i % 4) * 0.28,
-        stridePhase: i * 0.7,
-        paletteIndex: i % visitorPalette.length,
-      });
-    }
+    // 3D. Procedural Multi-Part Instanced Crowd Population System (36 Festive Revelers)
+    const proceduralCrowd = new ProceduralCrowdSystem(scene);
 
     // 4. Procedural 1024x1024 PBR Materials (`royalCobblestone`, `wetMarbleGulal`, `carvedSandstone`, `ornateSilk`)
     const cobblestonePBRBundle = createPBRMaterial('royalCobblestone', {
@@ -4604,6 +4546,18 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
     let lastPhotoPointerX = 0;
     let lastPhotoPointerY = 0;
 
+    // Smooth Third-Person Right-Drag Orbit & Mousewheel Zoom
+    let rightButtonDown = false;
+    let rightDragStartX = 0;
+    let rightDragStartY = 0;
+    let rightDragMoved = false;
+    let lastRightPointerX = 0;
+    let lastRightPointerY = 0;
+    let gameplayOrbitYaw = 0;
+    let gameplayOrbitPitch = 0;
+    let gameplayZoomOffset = 0;
+    let gameplayOrbitIdleTimer = 0;
+
     const updateCursorWorldFromPointer = (e: PointerEvent, isClick: boolean) => {
       const rect = renderer.domElement.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
@@ -4638,7 +4592,12 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         lastRidePointerY = e.clientY;
         updateCursorWorldFromPointer(e, true);
       } else if (e.button === 2) {
-        rightClickParryJustPressed = true;
+        rightButtonDown = true;
+        rightDragMoved = false;
+        rightDragStartX = e.clientX;
+        rightDragStartY = e.clientY;
+        lastRightPointerX = e.clientX;
+        lastRightPointerY = e.clientY;
       }
     };
 
@@ -4660,6 +4619,28 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           }
           return;
         }
+        if (rightButtonDown && !propsRef.current.mountedRide) {
+          const totalDist = Math.hypot(
+            e.clientX - rightDragStartX,
+            e.clientY - rightDragStartY
+          );
+          if (totalDist > 6) {
+            rightDragMoved = true;
+          }
+          const dx = e.clientX - lastRightPointerX;
+          const dy = e.clientY - lastRightPointerY;
+          if (Math.abs(dx) < 140 && Math.abs(dy) < 140) {
+            gameplayOrbitYaw -= dx * 0.0055;
+            gameplayOrbitPitch = Math.max(
+              -0.32,
+              Math.min(0.55, gameplayOrbitPitch + dy * 0.004)
+            );
+            gameplayOrbitIdleTimer = 3.5;
+          }
+          lastRightPointerX = e.clientX;
+          lastRightPointerY = e.clientY;
+          return;
+        }
         if (propsRef.current.mountedRide) {
           const dx = e.clientX - lastRidePointerX;
           const dy = e.clientY - lastRidePointerY;
@@ -4678,8 +4659,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       }
     };
 
-    const handleWindowPointerUp = () => {
-      pointerIsDown = false;
+    const handleWindowPointerUp = (e: PointerEvent) => {
+      if (e.button === 0 || !rightButtonDown) {
+        pointerIsDown = false;
+      }
+      if (e.button === 2 && rightButtonDown) {
+        if (!rightDragMoved && propsRef.current.gameState === 'playing') {
+          rightClickParryJustPressed = true;
+        }
+        rightButtonDown = false;
+        rightDragMoved = false;
+      }
     };
 
     const handleContextMenu = (e: MouseEvent) => {
@@ -4694,6 +4684,16 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         photoZoomDist = Math.max(
           1.8,
           Math.min(8.8, photoZoomDist + e.deltaY * 0.004)
+        );
+      } else if (
+        propsRef.current.gameState === 'playing' &&
+        !propsRef.current.mountedRide &&
+        !propsRef.current.activeStallModal
+      ) {
+        e.preventDefault();
+        gameplayZoomOffset = Math.max(
+          -1.4,
+          Math.min(3.2, gameplayZoomOffset + e.deltaY * 0.0028)
         );
       }
     };
@@ -5030,6 +5030,10 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       screenShakeState = createInitialScreenShakeState();
       karmaState = createInitialKarmaState();
       replayRecorder.reset();
+      gameplayOrbitYaw = 0;
+      gameplayOrbitPitch = 0;
+      gameplayZoomOffset = 0;
+      rightButtonDown = false;
       clearAllInputs();
 
       // All 6 Diyas start unlit so the player genuinely lights them
@@ -5136,6 +5140,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         });
         melaverseAudio.playHeavySplash(true, matchedWeakness);
         spawnParticleBurst(st.x, 1.25, st.z, weaponHex, 26, 8.5);
+        proceduralCrowd.triggerCelebration(st.x, st.z, 18.0, 'celebrate_cheer');
       } else {
         comboStreak += 1;
         combo = Math.min(10, combo + 1);
@@ -5185,6 +5190,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       emitFloatingCallout('Perfect Diya Rhythm! +30 Coins', '#fde047');
       applyKarmaDeed('light_diya', '+55 Karma · Sacred Diya Lit');
       propsRef.current.onRewardEarned(30, 45, 'Sacred Deepotsav Diya Stamp');
+      proceduralCrowd.triggerCelebration(d.x, d.z, 16.0, 'celebrate_cheer');
       if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
         replayRecorder.recordAction({
           t: roundElapsedSec,
@@ -5213,6 +5219,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         parseInt(skinSpec.rimHex.replace('#', ''), 16) || 0xfde047;
       spawnParticleBurst(playerX, 1.0, playerZ, rimInt, 18, 6.2);
       emitFloatingCallout('Sacred Lotus Shield Active (3.0s)!', '#f472b6');
+      proceduralCrowd.triggerCelebration(playerX, playerZ, 13.0, 'celebrate_namaste');
       if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
         replayRecorder.recordAction({
           t: roundElapsedSec,
@@ -5245,6 +5252,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       rhythmRingMesh.visible = true;
       melaverseAudio.playSacredChime();
       spawnParticleBurst(playerX, 1.15, playerZ, 0xfbbf24, 22, 6.8);
+      proceduralCrowd.triggerCelebration(playerX, playerZ, 16.0, 'celebrate_dance');
       if (propsRef.current.gameState === 'playing' && !propsRef.current.replayPlayback?.active) {
         replayRecorder.recordAction({
           t: roundElapsedSec,
@@ -5679,6 +5687,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
       score += 75;
       bestScore = Math.max(bestScore, score);
       emitFloatingCallout('Multi-Stage Fireworks! +25 Coins', '#fde047');
+      proceduralCrowd.triggerCelebration(playerX, playerZ, 30.0, 'celebrate_cheer');
       propsRef.current.onRewardEarned(
         25,
         35,
@@ -5852,6 +5861,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         melaverseAudio.playSacredChime();
         spawnParticleBurst(playerX, 0.35, playerZ, 0xf43f5e, 18, 6.0);
         emitFloatingCallout('Glowing Rangoli Stamped! +20 Coins', '#f472b6');
+        proceduralCrowd.triggerCelebration(playerX, playerZ, 16.0, 'celebrate_dance');
         currentProps.onRewardEarned(20, 30, 'Courtyard Rangoli Artist Stamp');
         if (currentProps.gameState === 'playing' && !currentProps.replayPlayback?.active) {
           replayRecorder.recordAction({
@@ -6054,17 +6064,21 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         });
       }
 
-      // Step Autonomous AI Crowd Visitors along Mela walkways (for radar positions)
+      // Step Procedural Multi-Part Instanced Crowd Revelers (stroll, chat, greet player, and celebrate!)
       const activeCrowdCount =
         GRAPHICS_PRESETS[currentProps.graphicsPreset].crowdCount;
-      for (let i = 0; i < MAX_CROWD_VISITORS; i++) {
-        if (i >= activeCrowdCount) continue;
-        crowdVisitors[i] = stepCrowdVisitorAI(
-          crowdVisitors[i],
-          melaPhysics.obstacles,
-          dt
-        );
-      }
+      const isMenuPreviewForCrowd = currentProps.gameState === 'title';
+      proceduralCrowd.update({
+        dt,
+        elapsedSec: elapsedTotal,
+        activeCount: activeCrowdCount,
+        activeWorld: currentProps.activeWorld,
+        playerX,
+        playerZ,
+        playerSpeed: Math.hypot(frameVelocityX, frameVelocityZ),
+        obstacles: melaPhysics.obstacles,
+        isTitlePreview: isMenuPreviewForCrowd,
+      });
 
       // Update Player 3D Attire (clamped warm tone so yellow/saffron kurta NEVER blows out under daytime sun) & Equipped Lotus Shield Skin
       playerModel.kurtaMat.color
@@ -6687,7 +6701,11 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           );
         }
       } else if (currentProps.gameState === 'playing' && !roundEnded) {
-        lastReplayActive = false;
+        if (lastReplayActive) {
+          lastReplayActive = false;
+          _projScreenVec3.set(playerX, playerY + 1.55, playerZ - 3.6);
+          cameraDirector.syncPose(camera.position, _projScreenVec3, camera.fov);
+        }
         roundElapsedSec += dt;
 
         // Exit ride if Escape pressed while mounted
@@ -6803,6 +6821,21 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
               comboStreak = 0;
               lastHudEmitTime = 0;
             }
+          }
+
+          // Gently auto-recenter manual camera orbit after 3.5s idle when player moves
+          if (!rightButtonDown) {
+            if (gameplayOrbitIdleTimer > 0) {
+              gameplayOrbitIdleTimer = Math.max(0, gameplayOrbitIdleTimer - simDt);
+            } else if (Math.hypot(frameVelocityX, frameVelocityZ) > 0.8) {
+              gameplayOrbitYaw *= Math.exp(-1.6 * simDt);
+              gameplayOrbitPitch *= Math.exp(-1.6 * simDt);
+            }
+          }
+          if (keysJustPressed.has('KeyC')) {
+            gameplayOrbitYaw = 0;
+            gameplayOrbitPitch = 0;
+            gameplayZoomOffset = 0;
           }
 
           // Mobile touch-drag camera look delta
@@ -7832,6 +7865,9 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
           photoOrbitPitch,
           photoZoomDist,
           photoFov: currentProps.photoFov,
+          orbitYawOffset: gameplayOrbitYaw,
+          orbitPitchOffset: gameplayOrbitPitch,
+          zoomDistanceOffset: gameplayZoomOffset,
         });
 
         replayRecorder.maybeRecordKeyframe({
@@ -8019,9 +8055,7 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
             playerZ,
             playerYaw,
             fps: Math.round(smoothedFps),
-            crowdPositions: crowdVisitors
-              .slice(0, Math.min(18, activeCrowdCount))
-              .map((v) => ({ x: v.x, z: v.z })),
+            crowdPositions: proceduralCrowd.getRadarPositions(18),
           });
         }
       } else if (currentProps.gameState === 'paused' && currentProps.activeStallModal) {
@@ -8103,18 +8137,17 @@ export const MelaverseCanvas: React.FC<MelaverseCanvasProps> = (props) => {
         handleCanvasPointerMove
       );
       renderer.domElement.removeEventListener(
+        'wheel',
+        handleCanvasWheel
+      );
+      renderer.domElement.removeEventListener(
         'contextmenu',
         handleContextMenu
       );
       melaPhysics.dispose();
       melaRidesRig?.dispose();
       loadedMelaAssets?.dispose();
-      crowdBodyGeo.dispose();
-      crowdBodyMat.dispose();
-      crowdHeadGeo.dispose();
-      crowdHeadMat.dispose();
-      crowdJoyGaugeGeo.dispose();
-      crowdJoyGaugeMat.dispose();
+      proceduralCrowd.dispose();
       cobblestonePBRBundle.dispose();
       wetMarbleGulalBundle.dispose();
       carvedSandstonePBRBundle.dispose();

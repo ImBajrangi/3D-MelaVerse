@@ -1664,8 +1664,16 @@ export function simulateRingTossTrajectory(
 }
 
 /**
- * Autonomous Mela Visitor Crowd AI (30+ visitors walking pathways with obstacle avoidance)
+ * Autonomous Mela Visitor Crowd AI (36+ procedural multi-part revelers with idle, greeting & celebratory emotes)
  */
+export type CrowdBehaviorState =
+  | 'strolling'
+  | 'idle_chat'
+  | 'admiring_player'
+  | 'celebrate_cheer'
+  | 'celebrate_dance'
+  | 'celebrate_namaste';
+
 export interface CrowdVisitorState {
   id: number;
   x: number;
@@ -1677,6 +1685,351 @@ export interface CrowdVisitorState {
   speed: number;
   stridePhase: number;
   paletteIndex: number;
+  behaviorState?: CrowdBehaviorState;
+  behaviorTimer?: number;
+  emotePhase?: number;
+  reactionCooldown?: number;
+  facingYaw?: number;
+  scaleFactor?: number;
+}
+
+export interface ProceduralCrowdPlayerContext {
+  playerX: number;
+  playerZ: number;
+  playerSpeed: number;
+  activeWorld: FestivalWorldId;
+}
+
+export interface CrowdMemberPose {
+  pelvisY: number;
+  yaw: number;
+  torsoPitch: number;
+  torsoRoll: number;
+  headYaw: number;
+  headPitch: number;
+  leftArmX: number;
+  leftArmZ: number;
+  rightArmX: number;
+  rightArmZ: number;
+  strideSwing: number;
+  dupattaTiltX: number;
+  scale: number;
+}
+
+function wrapAngleRad(a: number): number {
+  let out = a;
+  while (out > Math.PI) out -= Math.PI * 2;
+  while (out < -Math.PI) out += Math.PI * 2;
+  return out;
+}
+
+function pickWorldPromenadeWaypoint(
+  id: number,
+  x: number,
+  z: number,
+  activeWorld: FestivalWorldId,
+  seedStep: number
+): { targetX: number; targetZ: number } {
+  if (activeWorld === 'diwali_ghat') {
+    // Keep Diwali Ghat crowd safely on the Upper Sandstone Ghat Terrace (-26..26 x, -16..-10.8 z)
+    const lanes = [-24, -17, -11, -6, 6, 11, 17, 24];
+    const laneIdx = (id * 3 + seedStep) % lanes.length;
+    const tx = lanes[laneIdx] + Math.sin(id * 1.7 + seedStep) * 2.2;
+    const tz = -15.4 + ((id + seedStep * 2) % 4) * 1.15;
+    return { targetX: tx, targetZ: tz };
+  }
+  const currentAngle = Math.atan2(z, x);
+  const nextAngle = currentAngle + 0.55 + (id % 3) * 0.18;
+  const promenadeRadius = 11.5 + (id % 6) * 3.8;
+  return {
+    targetX: Math.cos(nextAngle) * promenadeRadius,
+    targetZ: Math.sin(nextAngle) * promenadeRadius,
+  };
+}
+
+export function stepProceduralCrowdVisitor(
+  visitor: CrowdVisitorState,
+  obstacles: { x: number; z: number; radius: number }[],
+  playerCtx: ProceduralCrowdPlayerContext,
+  dt: number
+): CrowdVisitorState {
+  const safeDt = clampDelta(dt);
+  const behavior: CrowdBehaviorState = visitor.behaviorState ?? 'strolling';
+  let behaviorTimer = Math.max(0, (visitor.behaviorTimer ?? 0) - safeDt);
+  let reactionCooldown = Math.max(0, (visitor.reactionCooldown ?? 0) - safeDt);
+  const emotePhase = (visitor.emotePhase ?? visitor.id * 0.63) + safeDt;
+  let nextBehavior: CrowdBehaviorState = behavior;
+  let nextTargetX = visitor.targetX;
+  let nextTargetZ = visitor.targetZ;
+
+  // Keep visitor inside walkable Diwali Ghat upper terrace if world changed
+  let curX = visitor.x;
+  let curZ = visitor.z;
+  if (playerCtx.activeWorld === 'diwali_ghat' && curZ > -10.5) {
+    const wp = pickWorldPromenadeWaypoint(
+      visitor.id,
+      curX,
+      -13.5,
+      'diwali_ghat',
+      1
+    );
+    curX = wp.targetX;
+    curZ = wp.targetZ;
+    nextTargetX = -wp.targetX * 0.5;
+    nextTargetZ = wp.targetZ;
+  }
+
+  const toPlayerX = playerCtx.playerX - curX;
+  const toPlayerZ = playerCtx.playerZ - curZ;
+  const distToPlayer = Math.hypot(toPlayerX, toPlayerZ);
+
+  // Trigger dynamic proximity reaction when player approaches within 8.5m
+  if (
+    behavior !== 'celebrate_cheer' &&
+    behavior !== 'celebrate_dance' &&
+    behavior !== 'celebrate_namaste' &&
+    behavior !== 'admiring_player' &&
+    distToPlayer < 8.5 &&
+    reactionCooldown <= 0
+  ) {
+    nextBehavior =
+      visitor.id % 3 === 0
+        ? 'celebrate_namaste'
+        : visitor.id % 3 === 1
+        ? 'celebrate_cheer'
+        : 'admiring_player';
+    behaviorTimer = 2.6 + (visitor.id % 3) * 0.65;
+    reactionCooldown = 9.0;
+  } else if (behavior !== 'strolling' && behaviorTimer <= 0) {
+    nextBehavior = 'strolling';
+    const wp = pickWorldPromenadeWaypoint(
+      visitor.id,
+      curX,
+      curZ,
+      playerCtx.activeWorld,
+      Math.floor(emotePhase)
+    );
+    nextTargetX = wp.targetX;
+    nextTargetZ = wp.targetZ;
+  }
+
+  const isStationaryEmote =
+    nextBehavior === 'idle_chat' ||
+    nextBehavior === 'admiring_player' ||
+    nextBehavior === 'celebrate_cheer' ||
+    nextBehavior === 'celebrate_dance' ||
+    nextBehavior === 'celebrate_namaste';
+
+  let nextVx = visitor.vx;
+  let nextVz = visitor.vz;
+  let nextX = curX;
+  let nextZ = curZ;
+  let stridePhase = visitor.stridePhase;
+  let desiredYaw = visitor.facingYaw ?? Math.atan2(visitor.vx || 0.01, visitor.vz || 1);
+
+  if (isStationaryEmote) {
+    const decay = Math.exp(-10 * safeDt);
+    nextVx *= decay;
+    nextVz *= decay;
+    if (distToPlayer < 16) {
+      desiredYaw = Math.atan2(toPlayerX, toPlayerZ);
+    }
+  } else {
+    let dx = nextTargetX - curX;
+    let dz = nextTargetZ - curZ;
+    const distToTarget = Math.hypot(dx, dz);
+
+    if (distToTarget < 1.8) {
+      // 35% chance of pausing briefly for a natural courtyard chat
+      if ((visitor.id + Math.floor(emotePhase * 2)) % 3 === 0 && reactionCooldown <= 4.0) {
+        nextBehavior = 'idle_chat';
+        behaviorTimer = 2.4 + (visitor.id % 4) * 0.55;
+      } else {
+        const wp = pickWorldPromenadeWaypoint(
+          visitor.id,
+          curX,
+          curZ,
+          playerCtx.activeWorld,
+          Math.floor(emotePhase * 3) + 1
+        );
+        nextTargetX = wp.targetX;
+        nextTargetZ = wp.targetZ;
+        dx = nextTargetX - curX;
+        dz = nextTargetZ - curZ;
+      }
+    }
+
+    const len = Math.max(0.001, Math.hypot(dx, dz));
+    let steerX = dx / len;
+    let steerZ = dz / len;
+
+    // Obstacle repulsion (rides, stalls, central stage, temple)
+    for (const obs of obstacles) {
+      const ox = curX - obs.x;
+      const oz = curZ - obs.z;
+      const oDist = Math.hypot(ox, oz);
+      const minSep = obs.radius + 1.25;
+      if (oDist > 0.001 && oDist < minSep) {
+        const push = (minSep - oDist) / minSep;
+        steerX += (ox / oDist) * push * 2.6;
+        steerZ += (oz / oDist) * push * 2.6;
+      }
+    }
+
+    // Soft personal space from player so crowd parts naturally around player
+    if (distToPlayer > 0.001 && distToPlayer < 2.2) {
+      const push = (2.2 - distToPlayer) / 2.2;
+      steerX -= (toPlayerX / distToPlayer) * push * 2.4;
+      steerZ -= (toPlayerZ / distToPlayer) * push * 2.4;
+    }
+
+    const steerLen = Math.max(0.001, Math.hypot(steerX, steerZ));
+    const targetVx = (steerX / steerLen) * visitor.speed;
+    const targetVz = (steerZ / steerLen) * visitor.speed;
+    const velBlend = 1 - Math.exp(-8.5 * safeDt);
+    nextVx = visitor.vx + (targetVx - visitor.vx) * velBlend;
+    nextVz = visitor.vz + (targetVz - visitor.vz) * velBlend;
+    nextX = curX + nextVx * safeDt;
+    nextZ = curZ + nextVz * safeDt;
+
+    if (playerCtx.activeWorld === 'diwali_ghat') {
+      nextX = Math.max(-29, Math.min(29, nextX));
+      nextZ = Math.max(-17.5, Math.min(-10.7, nextZ));
+    } else {
+      const radialDist = Math.hypot(nextX, nextZ);
+      if (radialDist > 42) {
+        nextX = (nextX / radialDist) * 42;
+        nextZ = (nextZ / radialDist) * 42;
+      }
+    }
+
+    if (Math.hypot(nextVx, nextVz) > 0.12) {
+      desiredYaw = Math.atan2(nextVx, nextVz);
+    }
+    stridePhase += Math.hypot(nextVx, nextVz) * safeDt * 3.4;
+  }
+
+  const prevYaw = visitor.facingYaw ?? desiredYaw;
+  const yawDiff = wrapAngleRad(desiredYaw - prevYaw);
+  const nextYaw = wrapAngleRad(prevYaw + yawDiff * (1 - Math.exp(-7.5 * safeDt)));
+
+  return {
+    ...visitor,
+    x: nextX,
+    z: nextZ,
+    vx: nextVx,
+    vz: nextVz,
+    targetX: nextTargetX,
+    targetZ: nextTargetZ,
+    stridePhase,
+    behaviorState: nextBehavior,
+    behaviorTimer,
+    emotePhase,
+    reactionCooldown,
+    facingYaw: nextYaw,
+    scaleFactor: visitor.scaleFactor ?? 0.92 + (visitor.id % 5) * 0.04,
+  };
+}
+
+export function computeCrowdMemberPose(
+  visitor: CrowdVisitorState,
+  elapsedSec: number
+): CrowdMemberPose {
+  const behavior: CrowdBehaviorState = visitor.behaviorState ?? 'strolling';
+  const phase = visitor.emotePhase ?? elapsedSec + visitor.id * 0.6;
+  const speed = Math.hypot(visitor.vx, visitor.vz);
+  const yaw = visitor.facingYaw ?? Math.atan2(visitor.vx || 0.01, visitor.vz || 1);
+  const scale = visitor.scaleFactor ?? 1.0;
+
+  let pelvisY = 0;
+  let torsoPitch = 0;
+  let torsoRoll = 0;
+  let headYaw = 0;
+  let headPitch = 0;
+  let leftArmX = 0;
+  let leftArmZ = 0.14;
+  let rightArmX = 0;
+  let rightArmZ = -0.14;
+  let strideSwing = 0;
+  let dupattaTiltX = 0.14;
+
+  if (behavior === 'celebrate_cheer') {
+    const bounce = Math.abs(Math.sin(phase * 7.2));
+    pelvisY = bounce * 0.16;
+    torsoPitch = -0.06;
+    torsoRoll = Math.sin(phase * 3.6) * 0.07;
+    headPitch = -0.14 + Math.sin(phase * 7.2) * 0.06;
+    // Arms raised cheering overhead
+    leftArmX = -2.45 + Math.sin(phase * 8.5) * 0.28;
+    leftArmZ = 0.35 + Math.cos(phase * 4.2) * 0.12;
+    rightArmX = -2.45 - Math.sin(phase * 8.5) * 0.28;
+    rightArmZ = -0.35 - Math.cos(phase * 4.2) * 0.12;
+    dupattaTiltX = 0.32 + bounce * 0.22;
+  } else if (behavior === 'celebrate_dance') {
+    // Festive Garba / Bhangra dance bounce + alternating shoulder pump
+    const beat = phase * 6.4;
+    pelvisY = Math.abs(Math.sin(beat)) * 0.14;
+    torsoRoll = Math.sin(beat * 0.5) * 0.14;
+    headYaw = Math.sin(beat * 0.5) * 0.22;
+    leftArmX = -1.75 + Math.sin(beat) * 0.65;
+    leftArmZ = 0.45 + Math.cos(beat) * 0.2;
+    rightArmX = -1.75 - Math.sin(beat) * 0.65;
+    rightArmZ = -0.45 - Math.cos(beat) * 0.2;
+    strideSwing = Math.sin(beat * 0.5) * 0.28;
+    dupattaTiltX = 0.28 + Math.abs(Math.cos(beat)) * 0.25;
+  } else if (behavior === 'celebrate_namaste') {
+    // Respectful Namaste bow toward player with hands brought together in front of chest
+    const breathe = Math.sin(phase * 3.0);
+    pelvisY = Math.abs(breathe) * 0.03;
+    torsoPitch = 0.18;
+    headPitch = 0.12;
+    leftArmX = -1.05;
+    leftArmZ = -0.42;
+    rightArmX = -1.05;
+    rightArmZ = 0.42;
+    dupattaTiltX = 0.08;
+  } else if (behavior === 'admiring_player') {
+    pelvisY = Math.sin(phase * 2.6) * 0.025;
+    headYaw = Math.sin(phase * 1.4) * 0.18;
+    leftArmX = -0.25;
+    leftArmZ = 0.22;
+    rightArmX = -1.55 + Math.sin(phase * 5.2) * 0.22; // Friendly wave
+    rightArmZ = -0.32;
+  } else if (behavior === 'idle_chat') {
+    pelvisY = Math.sin(phase * 2.1) * 0.022;
+    torsoRoll = Math.sin(phase * 1.1) * 0.035;
+    headYaw = Math.sin(phase * 1.8) * 0.24;
+    headPitch = Math.cos(phase * 2.4) * 0.06;
+    leftArmX = -0.35 + Math.sin(phase * 2.2) * 0.18;
+    leftArmZ = 0.16;
+    rightArmX = -0.45 + Math.cos(phase * 2.6) * 0.22;
+    rightArmZ = -0.16;
+  } else {
+    // Strolling with natural stride bob & counter-swinging arms
+    const walkActivity = Math.min(1, speed / 1.4);
+    strideSwing = Math.sin(visitor.stridePhase) * 0.52 * walkActivity;
+    pelvisY = Math.abs(Math.sin(visitor.stridePhase)) * 0.06 * walkActivity;
+    torsoPitch = 0.05 * walkActivity;
+    leftArmX = strideSwing * 0.85;
+    rightArmX = -strideSwing * 0.85;
+    dupattaTiltX = 0.14 + walkActivity * 0.24;
+  }
+
+  return {
+    pelvisY,
+    yaw,
+    torsoPitch,
+    torsoRoll,
+    headYaw,
+    headPitch,
+    leftArmX,
+    leftArmZ,
+    rightArmX,
+    rightArmZ,
+    strideSwing,
+    dupattaTiltX,
+    scale,
+  };
 }
 
 export function stepCrowdVisitorAI(
@@ -2677,6 +3030,64 @@ export function stepInteractiveAtmosphereParticles(
  * Cubic ease-in-out S-curve interpolation for 2.0s "One-Take" Dive Transitions
  * and 0.8s Stall/Gondola camera transitions.
  */
+/**
+ * Critically Damped Second-Order Spring-Damper Solver (Game Programming Gems 4)
+ * Guarantees C¹ continuous position and velocity with zero overshoot and zero frame-rate variance.
+ */
+export function stepCriticallyDampedSpring(
+  current: number,
+  velocity: number,
+  target: number,
+  smoothTime: number,
+  dt: number,
+  maxSpeed = Infinity
+): { value: number; velocity: number } {
+  const safeDt = Math.max(0.0001, Math.min(0.1, Number.isFinite(dt) ? dt : 0.016));
+  const safeSmooth = Math.max(0.005, smoothTime);
+  const omega = 2.0 / safeSmooth;
+  const x = omega * safeDt;
+  const exp = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+
+  let change = current - target;
+  const originalTarget = target;
+  const maxChange = Number.isFinite(maxSpeed) ? maxSpeed * safeSmooth : Infinity;
+  if (Number.isFinite(maxChange)) {
+    change = Math.max(-maxChange, Math.min(maxChange, change));
+  }
+  const adjustedTarget = current - change;
+  const temp = (velocity + omega * change) * safeDt;
+  let nextVelocity = (velocity - omega * temp) * exp;
+  let nextValue = adjustedTarget + (change + temp) * exp;
+
+  // Prevent overshoot across the original target
+  if ((originalTarget - current > 0) === (nextValue > originalTarget)) {
+    nextValue = originalTarget;
+    nextVelocity = (nextValue - originalTarget) / safeDt;
+  }
+
+  return { value: nextValue, velocity: nextVelocity };
+}
+
+/**
+ * Shortest-arc Critically Damped Angular Spring-Damper
+ */
+export function stepCriticallyDampedAngle(
+  currentRad: number,
+  velocityRad: number,
+  targetRad: number,
+  smoothTime: number,
+  dt: number
+): { value: number; velocity: number } {
+  let diff = targetRad - currentRad;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const res = stepCriticallyDampedSpring(0, velocityRad, diff, smoothTime, dt);
+  return {
+    value: currentRad + res.value,
+    velocity: res.velocity,
+  };
+}
+
 export function cubicEaseInOut(t: number): number {
   const clamped = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
   return clamped < 0.5
@@ -2688,6 +3099,23 @@ export interface HandheldBreathingOptions {
   moveSpeed?: number;
   isSprintingOrDashing?: boolean;
   intensityScale?: number;
+  phaseOverride?: number;
+}
+
+/**
+ * Integrates continuous camera breathing phase so changing movement speed or sprint
+ * smoothly accelerates cadence without discontinuous phase jumps.
+ */
+export function stepHandheldBreathingPhase(
+  currentPhase: number,
+  dt: number,
+  options?: Pick<HandheldBreathingOptions, 'moveSpeed' | 'isSprintingOrDashing'>
+): number {
+  const safeDt = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0));
+  const speed = Math.max(0, options?.moveSpeed ?? 0);
+  const isSprint = Boolean(options?.isSprintingOrDashing);
+  const speedCadence = isSprint ? 2.5 : 1.0 + Math.min(1.2, speed * 0.12);
+  return (Number.isFinite(currentPhase) ? currentPhase : 0) + safeDt * speedCadence;
 }
 
 /**
@@ -2707,28 +3135,31 @@ export function computeHandheldBreathing(
   const isSprint = Boolean(options?.isSprintingOrDashing);
   const userScale = Math.max(0.1, Math.min(3.0, options?.intensityScale ?? 1.0));
 
-  // Cadence scales naturally with movement: 1.35 rad/s idle -> up to 3.4 rad/s sprint
+  // If caller supplies integrated continuous phaseOverride, evaluate directly at continuous phase
+  // to avoid phase jumps on speed/sprint transitions.
   const speedCadence = isSprint ? 2.5 : 1.0 + Math.min(1.2, speed * 0.12);
-  const breathFreq = t * 1.35 * speedCadence;
-  const secondaryFreq = t * 2.45 * speedCadence;
-  const rollFreq = t * 1.15 * speedCadence;
+  const effectivePhase =
+    options?.phaseOverride !== undefined && Number.isFinite(options.phaseOverride)
+      ? options.phaseOverride
+      : t * speedCadence;
 
-  // Baseline Perlin-style dual harmonic amplitudes:
-  // Primary vertical: 0.052m, Secondary vertical: 0.028m -> Combined amplitude: 0.080m (±0.08m)
-  // Primary roll: 0.0026 rad, Secondary roll: 0.0014 rad -> Combined roll: 0.0040 rad (±0.004 rad)
+  const breathFreq = effectivePhase * 1.35;
+  const secondaryFreq = effectivePhase * 2.45;
+  const rollFreq = effectivePhase * 1.15;
+
   const speedAmpFactor = isSprint ? 1.25 : 1.0 + Math.min(0.4, speed * 0.04);
   const verticalOffsetM =
     (Math.sin(breathFreq) * 0.052 + Math.cos(secondaryFreq + 0.7) * 0.028) *
     speedAmpFactor *
     userScale;
   const horizontalOffsetM =
-    (Math.cos(t * 0.95 * speedCadence) * 0.035 +
-      Math.sin(t * 1.85 * speedCadence + 1.2) * 0.018) *
+    (Math.cos(effectivePhase * 0.95) * 0.035 +
+      Math.sin(effectivePhase * 1.85 + 1.2) * 0.018) *
     speedAmpFactor *
     userScale;
   const rollRad =
     (Math.sin(rollFreq + 0.4) * 0.0026 +
-      Math.cos(t * 2.1 * speedCadence) * 0.0014) *
+      Math.cos(effectivePhase * 2.1) * 0.0014) *
     speedAmpFactor *
     userScale;
 
@@ -2836,7 +3267,7 @@ export function computeCorneringDutchRoll(params: {
  * Computes the desired Over-The-Shoulder Spring-Arm Camera Pose and Velocity Look-Ahead Target,
  * incorporating Rule-of-Thirds offset (x: +0.65, y: 2.1, base distance: 5.2),
  * Vista Auto-Framing, Lotus Shield Low-Angle Orbit (+1.8m dolly, 0.3 rad/s),
- * and Fireworks Sky-Tracking (+6.0m vertical lookAt lift for 1.8s).
+ * optional smooth camera orbit/zoom overrides, and Fireworks Sky-Tracking (+6.0m vertical lookAt lift for 1.8s).
  */
 export function computeSpringArmDesiredPose(params: {
   playerX: number;
@@ -2848,6 +3279,11 @@ export function computeSpringArmDesiredPose(params: {
   shieldActive: boolean;
   fireworkLookUpTimerSec: number;
   elapsedSec: number;
+  shieldOrbitAngleOverride?: number;
+  shieldBlendOverride?: number;
+  orbitYawOffset?: number;
+  orbitPitchOffset?: number;
+  zoomDistanceOffset?: number;
 }): {
   desiredCamX: number;
   desiredCamY: number;
@@ -2863,26 +3299,48 @@ export function computeSpringArmDesiredPose(params: {
     activeWorld: params.activeWorld,
   });
 
-  // Base distance 5.2m -> up to 8.2m near monuments, +1.8m during Lotus Shield
-  const shieldDolly = params.shieldActive ? 1.8 : 0;
-  const desiredDistance = 5.2 + vista.extraDistance + shieldDolly;
+  const shieldBlend =
+    params.shieldBlendOverride !== undefined
+      ? Math.max(0, Math.min(1, params.shieldBlendOverride))
+      : params.shieldActive
+      ? 1
+      : 0;
 
-  // Lotus shield slow heroic low-angle orbit (0.3 rad/s)
-  const shieldOrbitAngle = params.shieldActive ? params.elapsedSec * 0.3 : 0;
-  const sinOrbit = Math.sin(shieldOrbitAngle);
-  const cosOrbit = Math.cos(shieldOrbitAngle);
+  // Base distance 5.2m -> up to 8.2m near monuments, +1.8m during Lotus Shield, + user zoom
+  const shieldDolly = shieldBlend * 1.8;
+  const zoomOffset = params.zoomDistanceOffset ?? 0;
+  const desiredDistance = Math.max(
+    3.6,
+    5.2 + vista.extraDistance + shieldDolly + zoomOffset
+  );
 
-  // Rule-of-Thirds Right-Shoulder Local Offset: x = +0.65, y = 2.1 (or 1.55 heroic low angle when shield active)
+  // Combine smooth shield orbit with optional player camera drag orbit
+  const baseShieldAngle =
+    params.shieldOrbitAngleOverride !== undefined
+      ? params.shieldOrbitAngleOverride
+      : params.shieldActive
+      ? params.elapsedSec * 0.3
+      : 0;
+  const totalOrbitYaw = baseShieldAngle + (params.orbitYawOffset ?? 0);
+  const sinOrbit = Math.sin(totalOrbitYaw);
+  const cosOrbit = Math.cos(totalOrbitYaw);
+
+  const pitchOffset = Math.max(-0.42, Math.min(0.65, params.orbitPitchOffset ?? 0));
+  const horizScale = Math.cos(pitchOffset);
+  const vertLift = Math.sin(pitchOffset) * desiredDistance;
+
+  // Rule-of-Thirds Right-Shoulder Local Offset: x = +0.65, y = 2.1 (smoothly blends to 1.55 heroic low angle when shield active)
   const localRightOffset = 0.65;
-  const localHeightOffset = params.shieldActive ? 1.55 : 2.1 + vista.vistaBlend * 0.45;
+  const normalHeightOffset = 2.1 + vista.vistaBlend * 0.45;
+  const localHeightOffset =
+    normalHeightOffset + (1.55 - normalHeightOffset) * shieldBlend + vertLift;
 
-  const worldOffsetX =
-    localRightOffset * cosOrbit + desiredDistance * sinOrbit;
-  const worldOffsetZ =
-    -localRightOffset * sinOrbit + desiredDistance * cosOrbit;
+  const planarDist = desiredDistance * horizScale;
+  const worldOffsetX = localRightOffset * cosOrbit + planarDist * sinOrbit;
+  const worldOffsetZ = -localRightOffset * sinOrbit + planarDist * cosOrbit;
 
   const desiredCamX = params.playerX + worldOffsetX;
-  const desiredCamY = params.playerY + localHeightOffset;
+  const desiredCamY = Math.max(0.85, params.playerY + localHeightOffset);
   const desiredCamZ = params.playerZ + worldOffsetZ;
 
   // Velocity Look-Ahead: offset up to 1.8 units ahead of player's current velocity vector (playerPos + velocity * 0.25)
@@ -2897,16 +3355,24 @@ export function computeSpringArmDesiredPose(params: {
   let fireworkLiftY = 0;
   if (params.fireworkLookUpTimerSec > 0) {
     const fwNorm = Math.max(0, Math.min(1, params.fireworkLookUpTimerSec / 1.8));
-    // Smooth bell envelope so it tilts up and returns smoothly to horizon
     const fwEnvelope = Math.sin(fwNorm * Math.PI);
     fireworkLiftY = 6.0 * fwEnvelope;
   }
 
-  // Forward sightline anchor (-3.6m toward festival plaza ahead + velocity look-ahead)
-  const desiredLookAtX = params.playerX + 0.28 + lookAheadX;
+  // Rotate forward look-at vector cleanly with camera orbit yaw so orbiting looks around the player smoothly
+  const baseLookFwdX = 0.28;
+  const baseLookFwdZ = -3.6;
+  const rotLookX = baseLookFwdX * cosOrbit - baseLookFwdZ * sinOrbit;
+  const rotLookZ = baseLookFwdX * sinOrbit + baseLookFwdZ * cosOrbit;
+
+  const desiredLookAtX = params.playerX + rotLookX + lookAheadX;
   const desiredLookAtY =
-    params.playerY + 1.55 + vista.extraLookAtY + fireworkLiftY;
-  const desiredLookAtZ = params.playerZ - 3.6 + lookAheadZ;
+    params.playerY +
+    1.55 +
+    vista.extraLookAtY +
+    fireworkLiftY -
+    pitchOffset * 1.4;
+  const desiredLookAtZ = params.playerZ + rotLookZ + lookAheadZ;
 
   return {
     desiredCamX: Number(desiredCamX.toFixed(4)),
